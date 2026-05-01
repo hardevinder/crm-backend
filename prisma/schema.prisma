@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  superadmin
+  admin
+  accounts
+  developer
+  support
+  client_admin
+  client_user
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+enum ClientType {
+  school
+  college
+  transport
+  website
+  software
+  result_analyzer
+  other
+}
+
+enum ClientStatus {
+  active
+  inactive
+  suspended
+}
+
+enum BillingCycle {
+  monthly
+  quarterly
+  yearly
+  one_time
+}
+
+enum SubscriptionStatus {
+  active
+  inactive
+  suspended
+  expired
+}
+
+enum InvoiceStatus {
+  unpaid
+  paid
+  partial
+  overdue
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  success
+  failed
+  cancelled
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  waiting_for_client
+  resolved
+  closed
+}
+
+enum TaskStatus {
+  pending
+  in_progress
+  testing
+  completed
+  on_hold
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  name         String
+  email        String     @unique
+  phone        String?
+  passwordHash String
+  role         UserRole
+  status       UserStatus @default(active)
+
+  clientId     Int?
+  client       Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  createdTickets  SupportTicket[] @relation("TicketCreatedBy")
+  assignedTickets SupportTicket[] @relation("TicketAssignedTo")
+  assignedTasks   Task[]          @relation("TaskAssignedTo")
+  taskUpdates     TaskUpdate[]
+
+  @@index([clientId])
+  @@index([role])
+  @@index([status])
+}
+
+model Client {
+  id            Int          @id @default(autoincrement())
+  clientName    String
+  clientCode    String       @unique
+  clientType    ClientType   @default(other)
+
+  contactPerson String?
+  phone         String?
+  email         String?
+  businessName  String?
+  gstin         String?
+  address       String?
+  city          String?
+  state         String?
+  country       String?      @default("India")
+  websiteUrl    String?
+  projectUrl    String?
+  notes         String?
+
+  status        ClientStatus @default(active)
+
+  users         User[]
+  subscriptions ClientSubscription[]
+  invoices      ClientInvoice[]
+  payments      ClientPayment[]
+  tickets       SupportTicket[]
+  tasks         Task[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([clientType])
+  @@index([status])
+}
+
+model ClientSubscription {
+  id              Int                @id @default(autoincrement())
+  clientId        Int
+  client          Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  serviceName     String
+  billingCycle    BillingCycle       @default(monthly)
+  amount          Decimal            @db.Decimal(12, 2)
+  gstPercent      Decimal            @default(18.00) @db.Decimal(5, 2)
+
+  startDate       DateTime?
+  endDate         DateTime?
+  nextInvoiceDate DateTime?
+
+  status          SubscriptionStatus @default(active)
+  remarks         String?
+
+  invoices        ClientInvoice[]
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@index([nextInvoiceDate])
+}
+
+model ClientInvoice {
+  id                Int                 @id @default(autoincrement())
+
+  clientId          Int
+  client            Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  subscriptionId    Int?
+  subscription      ClientSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  invoiceNo         String              @unique
+  invoiceDate       DateTime
+  dueDate           DateTime
+
+  billingPeriodFrom DateTime?
+  billingPeriodTo   DateTime?
+
+  subtotal          Decimal             @db.Decimal(12, 2)
+  gstPercent        Decimal             @default(0.00) @db.Decimal(5, 2)
+  gstAmount         Decimal             @default(0.00) @db.Decimal(12, 2)
+  totalAmount       Decimal             @db.Decimal(12, 2)
+  paidAmount        Decimal             @default(0.00) @db.Decimal(12, 2)
+  balanceAmount     Decimal             @db.Decimal(12, 2)
+
+  status            InvoiceStatus       @default(unpaid)
+  notes             String?
+
+  shareToken        String?             @unique
+  shareEnabled      Boolean             @default(false)
+  shareExpiresAt    DateTime?
+  sharedAt          DateTime?
+
+  payments          ClientPayment[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([clientId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([invoiceDate])
+  @@index([dueDate])
+}
+
+model ClientPayment {
+  id             Int            @id @default(autoincrement())
+
+  clientId       Int
+  client         Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  invoiceId      Int?
+  invoice        ClientInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  amount         Decimal        @db.Decimal(12, 2)
+  paymentMode    String
+  gateway        String?
+  transactionId  String?
+  referenceNo    String?
+  paymentStatus  PaymentStatus  @default(success)
+  paymentDate    DateTime       @default(now())
+  remarks        String?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([invoiceId])
+  @@index([paymentStatus])
+  @@index([paymentDate])
+}
+
+model SupportTicket {
+  id               Int            @id @default(autoincrement())
+
+  clientId         Int
+  client           Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  ticketNo         String         @unique
+  title            String
+  category         String?
+  priority         TicketPriority @default(medium)
+  description      String         @db.Text
+  status           TicketStatus   @default(open)
+
+  createdByUserId  Int?
+  createdBy        User?          @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  assignedToUserId Int?
+  assignedTo       User?          @relation("TicketAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  dueDate          DateTime?
+  resolvedAt       DateTime?
+  closedAt         DateTime?
+
+  replies          TicketReply[]
+  tasks            Task[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToUserId])
+}
+
+model TicketReply {
+  id         Int           @id @default(autoincrement())
+
+  ticketId   Int
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId     Int?
+  message    String        @db.Text
+  isInternal Boolean       @default(false)
+
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId])
+  @@index([userId])
+}
+
+model Task {
+  id               Int            @id @default(autoincrement())
+
+  clientId         Int
+  client           Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  ticketId         Int?
+  ticket           SupportTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  title            String
+  description      String?        @db.Text
+
+  assignedToUserId Int?
+  assignedTo       User?          @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  priority         TicketPriority @default(medium)
+  status           TaskStatus     @default(pending)
+  deadline         DateTime?
+  progressPercent  Int            @default(0)
+  completedAt      DateTime?
+
+  updates          TaskUpdate[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([ticketId])
+  @@index([assignedToUserId])
+  @@index([status])
+  @@index([deadline])
+}
+
+model TaskUpdate {
+  id         Int      @id @default(autoincrement())
+
+  taskId     Int
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  note       String   @db.Text
+  statusFrom String?
+  statusTo   String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([taskId])
+  @@index([userId])
+}
+
+model CompanySetting {
+  id                  Int      @id @default(autoincrement())
+
+  companyName         String   @default("Edubridge ERP")
+  legalName           String?
+  brandName           String?
+  logoUrl             String?
+
+  gstin               String?
+  pan                 String?
+
+  addressLine1        String?
+  addressLine2        String?
+  city                String?
+  state               String?
+  country             String?  @default("India")
+  pincode             String?
+
+  phone               String?
+  email               String?
+  website             String?
+
+  bankName            String?
+  bankAccountName     String?
+  bankAccountNumber   String?
+  ifscCode            String?
+  upiId               String?
+  bankQrImageUrl      String?
+  paymentInstructions String?  @db.Text
+
+  primaryColor        String   @default("#1D4ED8")
+  secondaryColor      String   @default("#0F172A")
+
+  invoicePrefix       String   @default("EB-INV")
+  footerNote          String?  @db.Text
+  termsAndConditions  String?  @db.Text
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}

@@ -1,0 +1,33 @@
+-- CreateTable
+CREATE TABLE `CompanySetting` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `companyName` VARCHAR(191) NOT NULL DEFAULT 'Edubridge ERP',
+    `legalName` VARCHAR(191) NULL,
+    `brandName` VARCHAR(191) NULL,
+    `logoUrl` VARCHAR(191) NULL,
+    `gstin` VARCHAR(191) NULL,
+    `pan` VARCHAR(191) NULL,
+    `addressLine1` VARCHAR(191) NULL,
+    `addressLine2` VARCHAR(191) NULL,
+    `city` VARCHAR(191) NULL,
+    `state` VARCHAR(191) NULL,
+    `country` VARCHAR(191) NULL DEFAULT 'India',
+    `pincode` VARCHAR(191) NULL,
+    `phone` VARCHAR(191) NULL,
+    `email` VARCHAR(191) NULL,
+    `website` VARCHAR(191) NULL,
+    `bankName` VARCHAR(191) NULL,
+    `bankAccountName` VARCHAR(191) NULL,
+    `bankAccountNumber` VARCHAR(191) NULL,
+    `ifscCode` VARCHAR(191) NULL,
+    `upiId` VARCHAR(191) NULL,
+    `primaryColor` VARCHAR(191) NOT NULL DEFAULT '#1D4ED8',
+    `secondaryColor` VARCHAR(191) NOT NULL DEFAULT '#0F172A',
+    `invoicePrefix` VARCHAR(191) NOT NULL DEFAULT 'EB-INV',
+    `footerNote` TEXT NULL,
+    `termsAndConditions` TEXT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
