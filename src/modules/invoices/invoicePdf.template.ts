@@ -176,6 +176,9 @@ export function renderInvoicePdfHtml({
   const totalAmount = Number(invoice.totalAmount || 0);
   const paidAmount = Number(invoice.paidAmount || 0);
   const balanceAmount = Number(invoice.balanceAmount || 0);
+  const gstPercent = Number(invoice.gstPercent || 0);
+  const gstAmount = Number(invoice.gstAmount || 0);
+  const hasGst = gstPercent > 0 || gstAmount > 0;
 
   const period =
     invoice.billingPeriodFrom || invoice.billingPeriodTo
@@ -189,7 +192,10 @@ export function renderInvoicePdfHtml({
   const billToRows = [
     detailRow("Client", client.clientName || client.name || "Client"),
     client.contactPerson ? detailRow("Contact", client.contactPerson) : "",
-    detailRowHtml("Address", clientAddressBlock(client) || "Address not available"),
+    detailRowHtml(
+      "Address",
+      clientAddressBlock(client) || "Address not available"
+    ),
     client.phone ? detailRow("Phone", client.phone) : "",
     client.email ? detailRow("Email", client.email) : "",
     client.gstin ? detailRow("GSTIN", client.gstin) : "",
@@ -688,10 +694,14 @@ export function renderInvoicePdfHtml({
       <table>
         <thead>
           <tr>
-            <th style="width: 44%;">Description</th>
+            <th style="width: ${hasGst ? "44%" : "56%"};">Description</th>
             <th style="width: 20%;">Period</th>
             <th class="text-right" style="width: 12%;">Amount</th>
-            <th class="text-right" style="width: 12%;">GST</th>
+            ${
+              hasGst
+                ? `<th class="text-right" style="width: 12%;">GST</th>`
+                : ""
+            }
             <th class="text-right" style="width: 12%;">Total</th>
           </tr>
         </thead>
@@ -707,10 +717,14 @@ export function renderInvoicePdfHtml({
             </td>
             <td>${esc(period)}</td>
             <td class="text-right">${formatCurrency(invoice.subtotal)}</td>
-            <td class="text-right">
-              ${esc(invoice.gstPercent ?? 0)}%<br/>
-              ${formatCurrency(invoice.gstAmount)}
-            </td>
+            ${
+              hasGst
+                ? `<td class="text-right">
+                    ${esc(gstPercent)}%<br/>
+                    ${formatCurrency(gstAmount)}
+                  </td>`
+                : ""
+            }
             <td class="text-right">${formatCurrency(totalAmount)}</td>
           </tr>
         </tbody>
@@ -762,10 +776,14 @@ export function renderInvoicePdfHtml({
             <span class="total-label">Subtotal</span>
             <span class="total-value">${formatCurrency(invoice.subtotal)}</span>
           </div>
-          <div class="total-row">
-            <span class="total-label">GST Amount</span>
-            <span class="total-value">${formatCurrency(invoice.gstAmount)}</span>
-          </div>
+          ${
+            hasGst
+              ? `<div class="total-row">
+                  <span class="total-label">GST Amount</span>
+                  <span class="total-value">${formatCurrency(gstAmount)}</span>
+                </div>`
+              : ""
+          }
           <div class="total-row grand">
             <span class="total-label">Grand Total</span>
             <span class="total-value">${formatCurrency(totalAmount)}</span>
