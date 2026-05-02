@@ -366,7 +366,7 @@ export function renderInvoicePdfHtml({
     }
 
     .section-body {
-      padding: 5px 12px;
+      padding: 6px 12px;
     }
 
     .invoice-details-card .section-head,
@@ -376,9 +376,9 @@ export function renderInvoicePdfHtml({
 
     .detail-row {
       display: grid;
-      grid-template-columns: 108px minmax(0, 1fr);
-      gap: 8px;
-      padding: 4px 0;
+      grid-template-columns: 122px minmax(0, 1fr);
+      gap: 10px;
+      padding: 5px 0;
       border-bottom: 1px dashed #e5e7eb;
       align-items: start;
     }
@@ -390,15 +390,15 @@ export function renderInvoicePdfHtml({
     .detail-label {
       color: #64748b;
       font-weight: 700;
-      font-size: 10px;
-      line-height: 1.12;
+      font-size: 10.4px;
+      line-height: 1.18;
     }
 
     .detail-value {
       color: #0f172a;
       font-weight: 800;
-      font-size: 10.2px;
-      line-height: 1.14;
+      font-size: 10.8px;
+      line-height: 1.2;
       word-break: break-word;
     }
 
@@ -457,8 +457,8 @@ export function renderInvoicePdfHtml({
 
     .lower-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 235px;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) 270px;
+      gap: 12px;
       margin-top: 10px;
       align-items: start;
     }
@@ -474,19 +474,27 @@ export function renderInvoicePdfHtml({
     }
 
     .bank-details-card .section-body {
-      padding-top: 4px;
-      padding-bottom: 4px;
+      padding: 8px 12px 8px;
+    }
+
+    .bank-details-card .detail-label {
+      font-size: 10.6px;
+    }
+
+    .bank-details-card .detail-value {
+      font-size: 11.2px;
+      font-weight: 800;
     }
 
     .instruction-box {
-      margin-top: 6px;
-      padding: 7px 9px;
+      margin-top: 8px;
+      padding: 8px 10px;
       border-radius: 10px;
       background: ${softPrimary};
       border: 1px solid #dbeafe;
       color: #334155;
-      font-size: 9.5px;
-      line-height: 1.18;
+      font-size: 10px;
+      line-height: 1.24;
     }
 
     .instruction-box strong {
@@ -494,25 +502,32 @@ export function renderInvoicePdfHtml({
     }
 
     .qr-card .section-body {
-      padding: 8px;
+      padding: 10px 10px 8px;
       text-align: center;
+    }
+
+    .qr-box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 150px;
     }
 
     .qr-box img {
       width: 100%;
       height: auto;
-      max-width: 108px;
-      max-height: 108px;
+      max-width: 150px;
+      max-height: 150px;
       object-fit: contain;
       display: block;
       margin: 0 auto;
     }
 
     .qr-note {
-      margin-top: 5px;
-      font-size: 9px;
+      margin-top: 6px;
+      font-size: 9.8px;
       color: #64748b;
-      line-height: 1.15;
+      line-height: 1.2;
       word-break: break-word;
     }
 
@@ -605,8 +620,8 @@ export function renderInvoicePdfHtml({
 
     .empty-state {
       color: #6b7280;
-      font-size: 9.5px;
-      line-height: 1.18;
+      font-size: 9.8px;
+      line-height: 1.2;
       padding: 6px 0;
     }
   </style>
