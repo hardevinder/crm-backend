@@ -8,12 +8,15 @@ import { fileURLToPath } from "node:url";
 import { env } from "./config/env.js";
 import jwtPlugin from "./plugins/jwt.js";
 import routes from "./routes/index.js";
+import whatsappWebhookRoutes from "./modules/whatsapp/webhook.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function normalizeOrigin(origin?: string | null) {
-  return String(origin || "").trim().replace(/\/+$/, "");
+  return String(origin || "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 export async function buildApp() {
@@ -55,8 +58,15 @@ export async function buildApp() {
     prefix: "/uploads/",
   });
 
+  // Public WhatsApp webhook route
+  // Final URL: https://your-domain.com/webhooks/whatsapp
+  await app.register(whatsappWebhookRoutes, {
+    prefix: "/webhooks/whatsapp",
+  });
+
   await app.register(jwtPlugin);
 
+  // Main protected/public API routes
   await app.register(routes, {
     prefix: "/api",
   });
