@@ -17,6 +17,7 @@ import { prisma } from "../../config/prisma.js";
 import {
   fetchMetaTemplates,
   sendTemplateMessage,
+  sendWhatsAppTextMessage,
 } from "./whatsapp-meta.service.js";
 import type {
   CampaignLeadFilter,
@@ -88,6 +89,60 @@ function enumValue<T extends Record<string, string>>(
 
 function isTrue(value: unknown): boolean {
   return String(value || "").trim().toLowerCase() === "true" || value === true;
+}
+
+function isAutoReplyEnabled(): boolean {
+  const value = process.env.WHATSAPP_AUTO_REPLY_ENABLED;
+  return value === undefined ? true : isTrue(value);
+}
+
+function getAutoReplyText(): string | null {
+  return (
+    toText(process.env.WHATSAPP_AUTO_REPLY_TEXT) ||
+    "Thank you ji. Our Edubridge team will contact you shortly."
+  );
+}
+
+function shouldAutoReplyToMessage(message: Record<string, any>): boolean {
+  const type = String(message.type || "").toLowerCase();
+
+  return ["text", "button", "interactive"].includes(type);
+}
+
+async function findRelatedOutboundMessage(params: {
+  contextProviderMessageId: string | null;
+  normalizedPhone: string | null;
+}) {
+  if (params.contextProviderMessageId) {
+    const byContext = await prisma.leadWhatsappMessage.findUnique({
+      where: {
+        providerMessageId: params.contextProviderMessageId,
+      },
+    });
+
+    if (byContext) return byContext;
+  }
+
+  if (!params.normalizedPhone) return null;
+
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  return prisma.leadWhatsappMessage.findFirst({
+    where: {
+      normalizedPhone: params.normalizedPhone,
+      direction: WhatsAppDirection.OUTBOUND,
+      campaignRecipientId: {
+        not: null,
+      },
+      createdAt: {
+        gte: since,
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 }
 
 function buildLeadWhere(filters?: CampaignLeadFilter): Prisma.LeadSchoolWhereInput {
@@ -968,14 +1023,18 @@ async function handleStatus(status: Record<string, any>, rawPayload: unknown) {
     });
   }
 
-  const recipient = await prisma.leadCampaignRecipient.findFirst({
-    where: {
-      OR: [
-        { providerMessageId },
-        { normalizedPhoneNumber: normalizePhone(status.recipient_id) || "" },
-      ],
-    },
-  });
+  // Important:
+  // Do not update a campaign recipient only by phone number here.
+  // Auto-replies and manual replies also generate status events for the same phone,
+  // and phone-only matching can accidentally change the original campaign recipient.
+  const recipient =
+    existingMessage?.campaignRecipientId
+      ? await prisma.leadCampaignRecipient.findUnique({
+          where: { id: existingMessage.campaignRecipientId },
+        })
+      : await prisma.leadCampaignRecipient.findFirst({
+          where: { providerMessageId },
+        });
 
   if (recipient) {
     const shouldIncrement = !(recipient as any)[mapped.field];
@@ -984,7 +1043,7 @@ async function handleStatus(status: Record<string, any>, rawPayload: unknown) {
       where: { id: recipient.id },
       data: {
         status: mapped.recipientStatus,
-        providerMessageId: providerMessageId,
+        providerMessageId,
         errorMessage: status.errors?.[0]?.message || null,
         [mapped.field]: eventAt,
       },
@@ -993,9 +1052,17 @@ async function handleStatus(status: Record<string, any>, rawPayload: unknown) {
     if (shouldIncrement) {
       const campaignIncrement: Prisma.LeadCampaignUpdateInput = {};
 
-      if (mapped.field === "deliveredAt") campaignIncrement.deliveredCount = { increment: 1 };
-      if (mapped.field === "readAt") campaignIncrement.readCount = { increment: 1 };
-      if (mapped.field === "failedAt") campaignIncrement.failedCount = { increment: 1 };
+      if (mapped.field === "deliveredAt") {
+        campaignIncrement.deliveredCount = { increment: 1 };
+      }
+
+      if (mapped.field === "readAt") {
+        campaignIncrement.readCount = { increment: 1 };
+      }
+
+      if (mapped.field === "failedAt") {
+        campaignIncrement.failedCount = { increment: 1 };
+      }
 
       if (Object.keys(campaignIncrement).length > 0) {
         await prisma.leadCampaign.update({
@@ -1007,38 +1074,129 @@ async function handleStatus(status: Record<string, any>, rawPayload: unknown) {
   }
 }
 
+async function saveAutoReply(params: {
+  to: string;
+  normalizedPhone: string | null;
+  text: string;
+  replyToMessageId: string;
+  leadSchoolId: number | null;
+  contactMethodId: number | null;
+  campaignId: number | null;
+  campaignRecipientId: number | null;
+}) {
+  try {
+    const response = await sendWhatsAppTextMessage(
+      params.to,
+      params.text,
+      params.replyToMessageId
+    );
+
+    const now = new Date();
+
+    await prisma.leadWhatsappMessage.create({
+      data: {
+        leadSchoolId: params.leadSchoolId,
+        contactMethodId: params.contactMethodId,
+        campaignId: params.campaignId,
+        campaignRecipientId: params.campaignRecipientId,
+        direction: WhatsAppDirection.OUTBOUND,
+        messageType: WhatsAppMessageType.TEXT,
+        status: WhatsAppMessageStatus.SENT,
+        phoneNumber: params.to,
+        normalizedPhone: params.normalizedPhone,
+        messageText: params.text,
+        providerMessageId: response.messageId || null,
+        contextProviderMessageId: params.replyToMessageId,
+        rawPayload: response.raw as Prisma.InputJsonValue,
+        sentAt: now,
+        statusUpdatedAt: now,
+      },
+    });
+
+    return {
+      sent: true,
+      messageId: response.messageId,
+      error: null as string | null,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown WhatsApp auto-reply error";
+
+    const now = new Date();
+
+    await prisma.leadWhatsappMessage.create({
+      data: {
+        leadSchoolId: params.leadSchoolId,
+        contactMethodId: params.contactMethodId,
+        campaignId: params.campaignId,
+        campaignRecipientId: params.campaignRecipientId,
+        direction: WhatsAppDirection.OUTBOUND,
+        messageType: WhatsAppMessageType.TEXT,
+        status: WhatsAppMessageStatus.FAILED,
+        phoneNumber: params.to,
+        normalizedPhone: params.normalizedPhone,
+        messageText: params.text,
+        contextProviderMessageId: params.replyToMessageId,
+        errorMessage: message,
+        rawPayload: { error: message } as Prisma.InputJsonValue,
+        failedAt: now,
+        statusUpdatedAt: now,
+      },
+    });
+
+    return {
+      sent: false,
+      messageId: null,
+      error: message,
+    };
+  }
+}
+
 async function handleInboundMessage(
   message: Record<string, any>,
   contact: Record<string, any> | undefined,
   rawPayload: unknown
 ) {
   const providerMessageId = toText(message.id);
-  if (!providerMessageId) return;
+  if (!providerMessageId) {
+    return {
+      saved: false,
+      autoReplySent: false,
+      autoReplyError: null as string | null,
+    };
+  }
+
+  const existingInbound = await prisma.leadWhatsappMessage.findUnique({
+    where: { providerMessageId },
+    select: { id: true },
+  });
 
   const from = toText(message.from) || toText(contact?.wa_id) || "unknown";
   const normalizedPhone = normalizePhone(from);
   const leadContact = await findLeadContactByPhone(normalizedPhone);
   const contextProviderMessageId = toText(message.context?.id);
-  const relatedOutbound = contextProviderMessageId
-    ? await prisma.leadWhatsappMessage.findUnique({
-        where: { providerMessageId: contextProviderMessageId },
-      })
-    : null;
+  const relatedOutbound = await findRelatedOutboundMessage({
+    contextProviderMessageId,
+    normalizedPhone,
+  });
 
   const button = inboundButton(message);
   const receivedAt = message.timestamp
     ? new Date(Number(message.timestamp) * 1000)
     : new Date();
 
-  const leadSchoolId = leadContact?.leadSchoolId || relatedOutbound?.leadSchoolId || null;
+  const leadSchoolId =
+    leadContact?.leadSchoolId || relatedOutbound?.leadSchoolId || null;
   const campaignId = relatedOutbound?.campaignId || null;
   const campaignRecipientId = relatedOutbound?.campaignRecipientId || null;
+  const contactMethodId =
+    leadContact?.id || relatedOutbound?.contactMethodId || null;
 
   const savedMessage = await prisma.leadWhatsappMessage.upsert({
     where: { providerMessageId },
     create: {
       leadSchoolId,
-      contactMethodId: leadContact?.id || relatedOutbound?.contactMethodId || null,
+      contactMethodId,
       campaignId,
       campaignRecipientId,
       direction: WhatsAppDirection.INBOUND,
@@ -1062,8 +1220,10 @@ async function handleInboundMessage(
     },
   });
 
-  if (leadSchoolId) {
-    const lead = await prisma.leadSchool.findUnique({ where: { id: leadSchoolId } });
+  if (leadSchoolId && !existingInbound) {
+    const lead = await prisma.leadSchool.findUnique({
+      where: { id: leadSchoolId },
+    });
 
     await prisma.$transaction([
       prisma.leadSchool.update({
@@ -1089,8 +1249,10 @@ async function handleInboundMessage(
     ]);
   }
 
-  if (campaignRecipientId) {
-    const recipient = await prisma.leadCampaignRecipient.findUnique({ where: { id: campaignRecipientId } });
+  if (campaignRecipientId && !existingInbound) {
+    const recipient = await prisma.leadCampaignRecipient.findUnique({
+      where: { id: campaignRecipientId },
+    });
 
     await prisma.leadCampaignRecipient.update({
       where: { id: campaignRecipientId },
@@ -1109,11 +1271,46 @@ async function handleInboundMessage(
       });
     }
   }
+
+  const autoReplyText = getAutoReplyText();
+  const canAutoReply =
+    !existingInbound &&
+    isAutoReplyEnabled() &&
+    shouldAutoReplyToMessage(message) &&
+    Boolean(autoReplyText) &&
+    from !== "unknown";
+
+  if (!canAutoReply || !autoReplyText) {
+    return {
+      saved: true,
+      autoReplySent: false,
+      autoReplyError: null as string | null,
+    };
+  }
+
+  const autoReply = await saveAutoReply({
+    to: from,
+    normalizedPhone,
+    text: autoReplyText,
+    replyToMessageId: providerMessageId,
+    leadSchoolId,
+    contactMethodId,
+    campaignId,
+    campaignRecipientId,
+  });
+
+  return {
+    saved: true,
+    autoReplySent: autoReply.sent,
+    autoReplyError: autoReply.error,
+  };
 }
 
 export async function handleWhatsAppWebhookPayload(payload: WhatsAppWebhookPayload) {
   let statusesHandled = 0;
   let messagesHandled = 0;
+  let autoRepliesSent = 0;
+  let autoRepliesFailed = 0;
 
   for (const entry of payload.entry || []) {
     for (const change of entry.changes || []) {
@@ -1126,9 +1323,23 @@ export async function handleWhatsAppWebhookPayload(payload: WhatsAppWebhookPaylo
       }
 
       for (const message of value.messages || []) {
-        const contact = value.contacts?.find((item) => item.wa_id === message.from) || value.contacts?.[0];
-        await handleInboundMessage(message, contact, payload);
-        messagesHandled += 1;
+        const contact =
+          value.contacts?.find((item) => item.wa_id === message.from) ||
+          value.contacts?.[0];
+
+        const result = await handleInboundMessage(message, contact, payload);
+
+        if (result.saved) {
+          messagesHandled += 1;
+        }
+
+        if (result.autoReplySent) {
+          autoRepliesSent += 1;
+        }
+
+        if (result.autoReplyError) {
+          autoRepliesFailed += 1;
+        }
       }
     }
   }
@@ -1136,5 +1347,7 @@ export async function handleWhatsAppWebhookPayload(payload: WhatsAppWebhookPaylo
   return {
     statusesHandled,
     messagesHandled,
+    autoRepliesSent,
+    autoRepliesFailed,
   };
 }

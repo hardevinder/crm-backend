@@ -7,12 +7,35 @@ type SendTemplateMessageInput = {
   variables?: Record<string, string | number | null | undefined>;
 };
 
+type SendTextMessageInput = {
+  to: string;
+  body: string;
+  previewUrl?: boolean;
+  replyToMessageId?: string;
+};
+
+type WhatsAppSendResult = {
+  raw: any;
+  messageId?: string;
+};
+
 function requiredEnv(name: string): string {
   const value = process.env[name];
+
   if (!value) {
     throw new Error(`${name} is missing in .env`);
   }
+
   return value;
+}
+
+function getApiErrorMessage(data: any, fallback: string): string {
+  return (
+    data?.error?.message ||
+    data?.error?.error_user_msg ||
+    data?.error?.error_data?.details ||
+    fallback
+  );
 }
 
 export function getWhatsAppApiVersion(): string {
@@ -31,6 +54,30 @@ export function getWhatsAppAccessToken(): string {
   return requiredEnv("WHATSAPP_ACCESS_TOKEN");
 }
 
+export function normalizeWhatsAppNumber(value: string): string {
+  let phone = String(value || "").replace(/\D+/g, "");
+
+  // Remove leading 00 international prefix if user pasted 0091...
+  if (phone.startsWith("00")) {
+    phone = phone.slice(2);
+  }
+
+  // Remove leading 0 for Indian local numbers like 09417873297
+  if (phone.length === 11 && phone.startsWith("0")) {
+    phone = phone.slice(1);
+  }
+
+  // If plain 10-digit mobile, prefix default country code.
+  // For India default is 91.
+  if (phone.length === 10) {
+    const defaultCountryCode =
+      process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || "91";
+    phone = `${defaultCountryCode}${phone}`;
+  }
+
+  return phone;
+}
+
 function buildTemplateComponents(
   variables?: Record<string, string | number | null | undefined>
 ) {
@@ -40,7 +87,10 @@ function buildTemplateComponents(
     const aNumber = Number(a.replace(/[^0-9]/g, ""));
     const bNumber = Number(b.replace(/[^0-9]/g, ""));
 
-    if (Number.isFinite(aNumber) && Number.isFinite(bNumber)) {
+    const aHasNumber = Number.isFinite(aNumber) && /\d/.test(a);
+    const bHasNumber = Number.isFinite(bNumber) && /\d/.test(b);
+
+    if (aHasNumber && bHasNumber) {
       return aNumber - bNumber;
     }
 
@@ -65,26 +115,86 @@ function buildTemplateComponents(
   ];
 }
 
-export async function sendTemplateMessage(input: SendTemplateMessageInput) {
+export async function sendTemplateMessage(
+  input: SendTemplateMessageInput
+): Promise<WhatsAppSendResult> {
   const apiVersion = getWhatsAppApiVersion();
   const phoneNumberId = getWhatsAppPhoneNumberId();
   const accessToken = getWhatsAppAccessToken();
 
-  const payload: Record<string, unknown> = {
-    messaging_product: "whatsapp",
-    to: input.to,
-    type: "template",
-    template: {
-      name: input.templateName,
-      language: {
-        code: input.languageCode || "en",
-      },
-      components: buildTemplateComponents(input.variables),
+  const components = buildTemplateComponents(input.variables);
+
+  const templatePayload: Record<string, unknown> = {
+    name: input.templateName,
+    language: {
+      code: input.languageCode || "en",
     },
   };
 
-  if (!(payload.template as Record<string, unknown>).components) {
-    delete (payload.template as Record<string, unknown>).components;
+  if (components) {
+    templatePayload.components = components;
+  }
+
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    to: normalizeWhatsAppNumber(input.to),
+    type: "template",
+    template: templatePayload,
+  };
+
+  const response = await fetch(
+    `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const data = (await response.json().catch(() => ({}))) as any;
+
+  if (!response.ok) {
+    throw new Error(
+      getApiErrorMessage(data, `WhatsApp API failed with ${response.status}`)
+    );
+  }
+
+  return {
+    raw: data,
+    messageId: data?.messages?.[0]?.id as string | undefined,
+  };
+}
+
+export async function sendTextMessage(
+  input: SendTextMessageInput
+): Promise<WhatsAppSendResult> {
+  const apiVersion = getWhatsAppApiVersion();
+  const phoneNumberId = getWhatsAppPhoneNumberId();
+  const accessToken = getWhatsAppAccessToken();
+
+  const body = String(input.body || "").trim();
+
+  if (!body) {
+    throw new Error("WhatsApp text message body is required");
+  }
+
+  const payload: Record<string, unknown> = {
+    messaging_product: "whatsapp",
+    to: normalizeWhatsAppNumber(input.to),
+    type: "text",
+    text: {
+      preview_url: Boolean(input.previewUrl),
+      body,
+    },
+  };
+
+  if (input.replyToMessageId) {
+    payload.context = {
+      message_id: input.replyToMessageId,
+    };
   }
 
   const response = await fetch(
@@ -102,18 +212,29 @@ export async function sendTemplateMessage(input: SendTemplateMessageInput) {
   const data = (await response.json().catch(() => ({}))) as any;
 
   if (!response.ok) {
-    const message =
-      data?.error?.message ||
-      data?.error?.error_user_msg ||
-      `WhatsApp API failed with ${response.status}`;
-
-    throw new Error(message);
+    throw new Error(
+      getApiErrorMessage(data, `WhatsApp text send failed with ${response.status}`)
+    );
   }
 
   return {
     raw: data,
     messageId: data?.messages?.[0]?.id as string | undefined,
   };
+}
+
+// Alias for readability in webhook auto-reply logic.
+export async function sendWhatsAppTextMessage(
+  to: string,
+  body: string,
+  replyToMessageId?: string
+): Promise<WhatsAppSendResult> {
+  return sendTextMessage({
+    to,
+    body,
+    previewUrl: false,
+    replyToMessageId,
+  });
 }
 
 export async function fetchMetaTemplates(limit = 100): Promise<MetaTemplate[]> {
@@ -141,8 +262,9 @@ export async function fetchMetaTemplates(limit = 100): Promise<MetaTemplate[]> {
   const data = (await response.json().catch(() => ({}))) as any;
 
   if (!response.ok) {
-    const message = data?.error?.message || `Template fetch failed with ${response.status}`;
-    throw new Error(message);
+    throw new Error(
+      getApiErrorMessage(data, `Template fetch failed with ${response.status}`)
+    );
   }
 
   return Array.isArray(data?.data) ? data.data : [];
