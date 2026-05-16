@@ -9,6 +9,7 @@ import { env } from "./config/env.js";
 import jwtPlugin from "./plugins/jwt.js";
 import routes from "./routes/index.js";
 import whatsappWebhookRoutes from "./modules/whatsapp/webhook.routes.js";
+import leadRoutes from "./modules/lead-generation/lead.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,7 @@ function normalizeOrigin(origin?: string | null) {
 export async function buildApp() {
   const app = Fastify({
     logger: true,
+    ignoreTrailingSlash: true,
   });
 
   const allowedOrigins = [
@@ -51,7 +53,11 @@ export async function buildApp() {
     maxAge: 86400,
   });
 
-  await app.register(multipart);
+  await app.register(multipart, {
+    limits: {
+      fileSize: 20 * 1024 * 1024,
+    },
+  });
 
   await app.register(staticPlugin, {
     root: path.join(__dirname, "../uploads"),
@@ -59,15 +65,30 @@ export async function buildApp() {
   });
 
   // Public WhatsApp webhook route
-  // Final URL: https://your-domain.com/webhooks/whatsapp
+  // Final URL: http://localhost:5005/webhooks/whatsapp
   await app.register(whatsappWebhookRoutes, {
     prefix: "/webhooks/whatsapp",
   });
 
   await app.register(jwtPlugin);
 
-  // Main protected/public API routes
+  // Main CRM API routes
+  // Existing routes final URLs:
+  // /api/auth/login
+  // /api/crm/clients
+  // /api/crm/invoices
+  // etc.
   await app.register(routes, {
+    prefix: "/api",
+  });
+
+  // SRM / Lead Generation routes
+  // Final URLs:
+  // /api/leads
+  // /api/leads/ping
+  // /api/leads/dashboard
+  // /api/leads/import-excel
+  await app.register(leadRoutes, {
     prefix: "/api",
   });
 

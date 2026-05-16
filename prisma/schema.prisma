@@ -99,17 +99,23 @@ model User {
   role         UserRole
   status       UserStatus @default(active)
 
-  clientId     Int?
-  client       Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientId Int?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
-  lastLoginAt  DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   createdTickets  SupportTicket[] @relation("TicketCreatedBy")
   assignedTickets SupportTicket[] @relation("TicketAssignedTo")
   assignedTasks   Task[]          @relation("TaskAssignedTo")
   taskUpdates     TaskUpdate[]
+
+  // SRM / Lead Generation relations
+  assignedLeadSchools      LeadSchool[]      @relation("LeadAssignedTo")
+  createdLeadImportBatches LeadImportBatch[] @relation("LeadImportCreatedBy")
+  handledLeadFollowUps     LeadFollowUp[]    @relation("LeadFollowUpHandledBy")
+  createdLeadCampaigns     LeadCampaign[]    @relation("LeadCampaignCreatedBy")
 
   @@index([clientId])
   @@index([role])
@@ -117,10 +123,10 @@ model User {
 }
 
 model Client {
-  id            Int          @id @default(autoincrement())
-  clientName    String
-  clientCode    String       @unique
-  clientType    ClientType   @default(other)
+  id         Int        @id @default(autoincrement())
+  clientName String
+  clientCode String     @unique
+  clientType ClientType @default(other)
 
   contactPerson String?
   phone         String?
@@ -130,12 +136,12 @@ model Client {
   address       String?
   city          String?
   state         String?
-  country       String?      @default("India")
+  country       String? @default("India")
   websiteUrl    String?
   projectUrl    String?
   notes         String?
 
-  status        ClientStatus @default(active)
+  status ClientStatus @default(active)
 
   users         User[]
   subscriptions ClientSubscription[]
@@ -144,34 +150,34 @@ model Client {
   tickets       SupportTicket[]
   tasks         Task[]
 
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientType])
   @@index([status])
 }
 
 model ClientSubscription {
-  id              Int                @id @default(autoincrement())
-  clientId        Int
-  client          Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       Int    @id @default(autoincrement())
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  serviceName     String
-  billingCycle    BillingCycle       @default(monthly)
-  amount          Decimal            @db.Decimal(12, 2)
-  gstPercent      Decimal            @default(18.00) @db.Decimal(5, 2)
+  serviceName  String
+  billingCycle BillingCycle @default(monthly)
+  amount       Decimal      @db.Decimal(12, 2)
+  gstPercent   Decimal      @default(18.00) @db.Decimal(5, 2)
 
   startDate       DateTime?
   endDate         DateTime?
   nextInvoiceDate DateTime?
 
-  status          SubscriptionStatus @default(active)
-  remarks         String?
+  status  SubscriptionStatus @default(active)
+  remarks String?
 
-  invoices        ClientInvoice[]
+  invoices ClientInvoice[]
 
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([status])
@@ -179,40 +185,40 @@ model ClientSubscription {
 }
 
 model ClientInvoice {
-  id                Int                 @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  clientId          Int
-  client            Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  subscriptionId    Int?
-  subscription      ClientSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  subscriptionId Int?
+  subscription   ClientSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
-  invoiceNo         String              @unique
-  invoiceDate       DateTime
-  dueDate           DateTime
+  invoiceNo   String   @unique
+  invoiceDate DateTime
+  dueDate     DateTime
 
   billingPeriodFrom DateTime?
   billingPeriodTo   DateTime?
 
-  subtotal          Decimal             @db.Decimal(12, 2)
-  gstPercent        Decimal             @default(0.00) @db.Decimal(5, 2)
-  gstAmount         Decimal             @default(0.00) @db.Decimal(12, 2)
-  totalAmount       Decimal             @db.Decimal(12, 2)
-  paidAmount        Decimal             @default(0.00) @db.Decimal(12, 2)
-  balanceAmount     Decimal             @db.Decimal(12, 2)
+  subtotal      Decimal @db.Decimal(12, 2)
+  gstPercent    Decimal @default(0.00) @db.Decimal(5, 2)
+  gstAmount     Decimal @default(0.00) @db.Decimal(12, 2)
+  totalAmount   Decimal @db.Decimal(12, 2)
+  paidAmount    Decimal @default(0.00) @db.Decimal(12, 2)
+  balanceAmount Decimal @db.Decimal(12, 2)
 
-  status            InvoiceStatus       @default(unpaid)
-  notes             String?
+  status InvoiceStatus @default(unpaid)
+  notes  String?
 
-  shareToken        String?             @unique
-  shareEnabled      Boolean             @default(false)
-  shareExpiresAt    DateTime?
-  sharedAt          DateTime?
+  shareToken     String?   @unique
+  shareEnabled   Boolean   @default(false)
+  shareExpiresAt DateTime?
+  sharedAt       DateTime?
 
-  payments          ClientPayment[]
+  payments ClientPayment[]
 
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([subscriptionId])
@@ -222,25 +228,25 @@ model ClientInvoice {
 }
 
 model ClientPayment {
-  id             Int            @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  clientId       Int
-  client         Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  invoiceId      Int?
-  invoice        ClientInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId Int?
+  invoice   ClientInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
-  amount         Decimal        @db.Decimal(12, 2)
-  paymentMode    String
-  gateway        String?
-  transactionId  String?
-  referenceNo    String?
-  paymentStatus  PaymentStatus  @default(success)
-  paymentDate    DateTime       @default(now())
-  remarks        String?
+  amount        Decimal       @db.Decimal(12, 2)
+  paymentMode   String
+  gateway       String?
+  transactionId String?
+  referenceNo   String?
+  paymentStatus PaymentStatus @default(success)
+  paymentDate   DateTime      @default(now())
+  remarks       String?
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([invoiceId])
@@ -249,33 +255,33 @@ model ClientPayment {
 }
 
 model SupportTicket {
-  id               Int            @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  clientId         Int
-  client           Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  ticketNo         String         @unique
-  title            String
-  category         String?
-  priority         TicketPriority @default(medium)
-  description      String         @db.Text
-  status           TicketStatus   @default(open)
+  ticketNo    String         @unique
+  title       String
+  category    String?
+  priority    TicketPriority @default(medium)
+  description String         @db.Text
+  status      TicketStatus   @default(open)
 
-  createdByUserId  Int?
-  createdBy        User?          @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByUserId Int?
+  createdBy       User? @relation("TicketCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   assignedToUserId Int?
-  assignedTo       User?          @relation("TicketAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedTo       User? @relation("TicketAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
-  dueDate          DateTime?
-  resolvedAt       DateTime?
-  closedAt         DateTime?
+  dueDate    DateTime?
+  resolvedAt DateTime?
+  closedAt   DateTime?
 
-  replies          TicketReply[]
-  tasks            Task[]
+  replies TicketReply[]
+  tasks   Task[]
 
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([status])
@@ -284,46 +290,46 @@ model SupportTicket {
 }
 
 model TicketReply {
-  id         Int           @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  ticketId   Int
-  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId Int
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   userId     Int?
-  message    String        @db.Text
-  isInternal Boolean       @default(false)
+  message    String  @db.Text
+  isInternal Boolean @default(false)
 
-  createdAt  DateTime      @default(now())
+  createdAt DateTime @default(now())
 
   @@index([ticketId])
   @@index([userId])
 }
 
 model Task {
-  id               Int            @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  clientId         Int
-  client           Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId Int
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  ticketId         Int?
-  ticket           SupportTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  ticketId Int?
+  ticket   SupportTicket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
 
-  title            String
-  description      String?        @db.Text
+  title       String
+  description String? @db.Text
 
   assignedToUserId Int?
-  assignedTo       User?          @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedTo       User? @relation("TaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
-  priority         TicketPriority @default(medium)
-  status           TaskStatus     @default(pending)
-  deadline         DateTime?
-  progressPercent  Int            @default(0)
-  completedAt      DateTime?
+  priority        TicketPriority @default(medium)
+  status          TaskStatus     @default(pending)
+  deadline        DateTime?
+  progressPercent Int            @default(0)
+  completedAt     DateTime?
 
-  updates          TaskUpdate[]
+  updates TaskUpdate[]
 
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([ticketId])
@@ -333,45 +339,45 @@ model Task {
 }
 
 model TaskUpdate {
-  id         Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  taskId     Int
-  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId Int
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  userId     Int?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  note       String   @db.Text
+  note       String  @db.Text
   statusFrom String?
   statusTo   String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([taskId])
   @@index([userId])
 }
 
 model CompanySetting {
-  id                  Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  companyName         String   @default("Edubridge ERP")
-  legalName           String?
-  brandName           String?
-  logoUrl             String?
+  companyName String  @default("Edubridge ERP")
+  legalName   String?
+  brandName   String?
+  logoUrl     String?
 
-  gstin               String?
-  pan                 String?
+  gstin String?
+  pan   String?
 
-  addressLine1        String?
-  addressLine2        String?
-  city                String?
-  state               String?
-  country             String?  @default("India")
-  pincode             String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  country      String? @default("India")
+  pincode      String?
 
-  phone               String?
-  email               String?
-  website             String?
+  phone   String?
+  email   String?
+  website String?
 
   bankName            String?
   bankAccountName     String?
@@ -379,15 +385,389 @@ model CompanySetting {
   ifscCode            String?
   upiId               String?
   bankQrImageUrl      String?
-  paymentInstructions String?  @db.Text
+  paymentInstructions String? @db.Text
 
-  primaryColor        String   @default("#1D4ED8")
-  secondaryColor      String   @default("#0F172A")
+  primaryColor   String @default("#1D4ED8")
+  secondaryColor String @default("#0F172A")
 
-  invoicePrefix       String   @default("EB-INV")
-  footerNote          String?  @db.Text
-  termsAndConditions  String?  @db.Text
+  invoicePrefix      String  @default("EB-INV")
+  footerNote         String? @db.Text
+  termsAndConditions String? @db.Text
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =========================
+// SRM / Lead Generation Module
+// =========================
+
+enum LeadStatus {
+  NEW_LEAD
+  WHATSAPP_SENT
+  REPLY_RECEIVED
+  DEMO_INTERESTED
+  DEMO_SCHEDULED
+  DEMO_DONE
+  QUOTATION_SENT
+  CONVERTED
+  FOLLOW_UP_REQUIRED
+  NOT_INTERESTED
+  WRONG_NUMBER
+  DUPLICATE
+}
+
+enum LeadPriority {
+  HOT
+  WARM
+  COLD
+}
+
+enum LeadSource {
+  MANUAL
+  EXCEL_IMPORT
+  GOOGLE
+  REFERRAL
+  WEBSITE
+  WHATSAPP
+  FACEBOOK
+  INSTAGRAM
+  LINKEDIN
+  OTHER
+}
+
+enum ContactMethodType {
+  MOBILE
+  WHATSAPP
+  LANDLINE
+  EMAIL
+  WEBSITE
+  OTHER
+}
+
+enum LeadFollowUpType {
+  CALL
+  WHATSAPP
+  EMAIL
+  MEETING
+  DEMO
+  NOTE
+}
+
+enum LeadImportStatus {
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+enum WhatsAppDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum WhatsAppMessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  FAILED
+  RECEIVED
+}
+
+enum LeadCampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum LeadCampaignRecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  FAILED
+  SKIPPED
+}
+
+enum WhatsappTemplateStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PAUSED
+}
+
+model LeadImportBatch {
+  id          Int              @id @default(autoincrement())
+  filename    String           @db.VarChar(255)
+  sheetName   String?          @db.VarChar(120)
+  totalRows   Int              @default(0)
+  successRows Int              @default(0)
+  failedRows  Int              @default(0)
+  skippedRows Int              @default(0)
+  status      LeadImportStatus @default(PROCESSING)
+  errorsJson  Json?
+
+  createdByUserId Int?
+  createdByUser   User? @relation("LeadImportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  leads LeadSchool[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdByUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("lead_import_batches")
+}
+
+model LeadSchool {
+  id   Int    @id @default(autoincrement())
+  uuid String @unique @default(uuid())
+
+  schoolName      String  @db.VarChar(255)
+  normalizedName  String  @db.VarChar(255)
+  schoolType      String? @db.VarChar(100)
+  schoolCategory  String? @default("PRIVATE") @db.VarChar(60)
+  board           String? @db.VarChar(80)
+  state           String? @db.VarChar(100)
+  normalizedState String  @default("UNKNOWN") @db.VarChar(100)
+  city            String? @db.VarChar(100)
+  district        String? @db.VarChar(100)
+  address         String? @db.Text
+  website         String? @db.Text
+
+  // Optional fields matching the uploaded school-contact Excel format.
+  streamsFound       String?   @db.VarChar(255)
+  latestDateTime     DateTime?
+  latestFile         String?   @db.Text
+  totalFilesVersions Int?
+  sizeKb             Decimal?  @db.Decimal(10, 2)
+
+  // Fast-listing primary fields. Full details stay in LeadContactMethod.
+  primaryMobile   String? @db.VarChar(30)
+  primaryWhatsapp String? @db.VarChar(30)
+  primaryLandline String? @db.VarChar(30)
+  primaryEmail    String? @db.VarChar(255)
+
+  status             LeadStatus   @default(NEW_LEAD)
+  priority           LeadPriority @default(WARM)
+  source             LeadSource   @default(MANUAL)
+  sourceLabel        String?      @db.VarChar(120)
+  verificationStatus String?      @db.VarChar(120)
+  contactNotes       String?      @db.Text
+  manualSearchLink   String?      @db.Text
+
+  assignedToUserId Int?
+  assignedTo       User? @relation("LeadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  importedBatchId Int?
+  importBatch     LeadImportBatch? @relation(fields: [importedBatchId], references: [id], onDelete: SetNull)
+
+  contactMethods     LeadContactMethod[]
+  followUps          LeadFollowUp[]
+  whatsappMessages   LeadWhatsappMessage[]
+  campaignRecipients LeadCampaignRecipient[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([normalizedName, normalizedState])
+  @@index([state, city])
+  @@index([board])
+  @@index([status, priority])
+  @@index([source])
+  @@index([primaryMobile])
+  @@index([primaryWhatsapp])
+  @@index([primaryEmail])
+  @@index([assignedToUserId])
+  @@index([importedBatchId])
+  @@index([deletedAt])
+  @@map("lead_schools")
+}
+
+model LeadContactMethod {
+  id           Int        @id @default(autoincrement())
+  leadSchoolId Int
+  leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
+
+  methodType         ContactMethodType
+  value              String            @db.VarChar(255)
+  normalizedValue    String            @db.VarChar(255)
+  label              String?           @db.VarChar(80)
+  isPrimary          Boolean           @default(false)
+  sourceUrl          String?           @db.Text
+  verificationStatus String?           @db.VarChar(120)
+  notes              String?           @db.Text
+
+  whatsappMessages LeadWhatsappMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([leadSchoolId, methodType, normalizedValue])
+  @@index([methodType, normalizedValue])
+  @@index([leadSchoolId, isPrimary])
+  @@map("lead_contact_methods")
+}
+
+model LeadFollowUp {
+  id           Int        @id @default(autoincrement())
+  leadSchoolId Int
+  leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
+
+  followUpType   LeadFollowUpType @default(NOTE)
+  followUpAt     DateTime         @default(now())
+  remarks        String           @db.Text
+  previousStatus LeadStatus?
+  nextStatus     LeadStatus?
+  nextFollowUpAt DateTime?
+
+  handledByUserId Int?
+  handledBy       User? @relation("LeadFollowUpHandledBy", fields: [handledByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadSchoolId, followUpAt])
+  @@index([nextFollowUpAt])
+  @@index([handledByUserId])
+  @@map("lead_followups")
+}
+
+model LeadWhatsappTemplate {
+  id           Int                    @id @default(autoincrement())
+  templateName String                 @unique @db.VarChar(150)
+  displayName  String?                @db.VarChar(150)
+  languageCode String                 @default("en") @db.VarChar(20)
+  category     String?                @db.VarChar(80)
+  status       WhatsappTemplateStatus @default(DRAFT)
+
+  headerText         String? @db.Text
+  bodyText           String  @db.Text
+  footerText         String? @db.Text
+  buttonsJson        Json?
+  variablesJson      Json?
+  providerTemplateId String? @db.VarChar(255)
+
+  campaigns LeadCampaign[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([languageCode])
+  @@map("lead_whatsapp_templates")
+}
+
+model LeadCampaign {
+  id          Int                @id @default(autoincrement())
+  title       String             @db.VarChar(180)
+  description String?            @db.Text
+  status      LeadCampaignStatus @default(DRAFT)
+
+  templateId   Int?
+  template     LeadWhatsappTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateName String?               @db.VarChar(150)
+
+  targetFiltersJson Json?
+  scheduledAt       DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  totalRecipients Int @default(0)
+  sentCount       Int @default(0)
+  deliveredCount  Int @default(0)
+  readCount       Int @default(0)
+  replyCount      Int @default(0)
+  failedCount     Int @default(0)
+
+  createdByUserId Int?
+  createdBy       User? @relation("LeadCampaignCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  recipients       LeadCampaignRecipient[]
+  whatsappMessages LeadWhatsappMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([templateId])
+  @@index([createdByUserId])
+  @@index([scheduledAt])
+  @@map("lead_campaigns")
+}
+
+model LeadCampaignRecipient {
+  id         Int          @id @default(autoincrement())
+  campaignId Int
+  campaign   LeadCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  leadSchoolId Int
+  leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
+
+  phoneNumber  String?                     @db.VarChar(30)
+  status       LeadCampaignRecipientStatus @default(PENDING)
+  errorMessage String?                     @db.Text
+  sentAt       DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  repliedAt    DateTime?
+
+  whatsappMessages LeadWhatsappMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campaignId, leadSchoolId])
+  @@index([leadSchoolId])
+  @@index([status])
+  @@map("lead_campaign_recipients")
+}
+
+model LeadWhatsappMessage {
+  id           Int        @id @default(autoincrement())
+  leadSchoolId Int
+  leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
+
+  contactMethodId Int?
+  contactMethod   LeadContactMethod? @relation(fields: [contactMethodId], references: [id], onDelete: SetNull)
+
+  campaignId Int?
+  campaign   LeadCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  campaignRecipientId Int?
+  campaignRecipient   LeadCampaignRecipient? @relation(fields: [campaignRecipientId], references: [id], onDelete: SetNull)
+
+  direction         WhatsAppDirection
+  phoneNumber       String                @db.VarChar(30)
+  templateName      String?               @db.VarChar(150)
+  campaignName      String?               @db.VarChar(150)
+  messageText       String?               @db.Text
+  providerMessageId String?               @unique @db.VarChar(255)
+  status            WhatsAppMessageStatus @default(QUEUED)
+  errorMessage      String?               @db.Text
+  rawPayload        Json?
+  sentAt            DateTime?
+  receivedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadSchoolId, createdAt])
+  @@index([contactMethodId])
+  @@index([campaignId])
+  @@index([campaignRecipientId])
+  @@index([phoneNumber])
+  @@index([campaignName])
+  @@index([status])
+  @@map("lead_whatsapp_messages")
 }

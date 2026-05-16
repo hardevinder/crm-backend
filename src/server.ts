@@ -1,22 +1,24 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
-import { prisma } from "./config/prisma.js";
 
-async function start() {
-  const app = await buildApp();
-
+async function startServer() {
   try {
+    const app = await buildApp();
+
+    const port = Number(env.PORT || 5005);
+    const host = "0.0.0.0";
+
     await app.listen({
-      port: env.PORT,
-      host: "0.0.0.0",
+      port,
+      host,
     });
 
-    console.log(`✅ Edubridge CRM API running on port ${env.PORT}`);
+    app.log.info(`Edubridge CRM API running on http://localhost:${port}`);
+    app.log.info(app.printRoutes());
   } catch (error) {
-    app.log.error(error);
-    await prisma.$disconnect();
+    console.error("Failed to start Edubridge CRM API:", error);
     process.exit(1);
   }
 }
 
-start();
+void startServer();
