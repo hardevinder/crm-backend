@@ -155,7 +155,9 @@ function toContactMethodType(value: unknown): ContactMethodType | null {
 
 function buildPrimaryFields(contactMethods: LeadContactInput[]) {
   const firstMobile = contactMethods.find(
-    (c) => c.methodType === ContactMethodType.MOBILE || c.methodType === ContactMethodType.WHATSAPP
+    (c) =>
+      c.methodType === ContactMethodType.MOBILE ||
+      c.methodType === ContactMethodType.WHATSAPP
   );
   const firstLandline = contactMethods.find(
     (c) => c.methodType === ContactMethodType.LANDLINE
@@ -904,13 +906,13 @@ function indexedColumns(baseNames: string[], index: number): string[] {
 
 function addExcelContactsFromCell(params: {
   contacts: LeadContactInput[];
-  methodType: ContactMethodType.MOBILE | ContactMethodType.EMAIL;
+  methodType: ContactMethodType;
   value: unknown;
   label: string;
   isPrimary: boolean;
   sourceUrl: string | null;
-  verificationStatus: string;
-  notes: string;
+  verificationStatus: string | null;
+  notes: string | null;
 }) {
   const {
     contacts,
@@ -943,7 +945,9 @@ function addExcelContactsFromCell(params: {
   }
 }
 
-function buildImportPrimaryFields(contactMethods: LeadContactInput[]): ImportPrimaryFields {
+function buildImportPrimaryFields(
+  contactMethods: LeadContactInput[]
+): ImportPrimaryFields {
   const firstMobile = contactMethods.find(
     (contact) => contact.methodType === ContactMethodType.MOBILE
   );
@@ -966,15 +970,13 @@ function buildImportPrimaryFields(contactMethods: LeadContactInput[]): ImportPri
 }
 
 function excelRowToLead(row: Record<string, unknown>): ParsedExcelLead {
-  const schoolName = toText(pick(row, ["School Name", "School", "Name"]));
-  const state = toText(pick(row, ["State"]));
-  const verificationStatus = toText(
-    pick(row, ["Verification Status", "Verification"])
-  );
-  const notes = toText(pick(row, ["Contact Notes", "Notes", "Remarks"]));
-  const manualSearchLink = toText(
-    pick(row, ["Manual Search Link", "Search Link"])
-  );
+  const schoolName = toText(pick(row, ["School Name", "School", "Name"])) || "";
+  const state = toText(pick(row, ["State"])) || "";
+  const verificationStatus =
+    toText(pick(row, ["Verification Status", "Verification"])) || "";
+  const notes = toText(pick(row, ["Contact Notes", "Notes", "Remarks"])) || "";
+  const manualSearchLink =
+    toText(pick(row, ["Manual Search Link", "Search Link"])) || "";
   const sourceUrl1 = toText(pick(row, ["Source URL 1", "Source 1"]));
   const sourceUrl2 = toText(pick(row, ["Source URL 2", "Source 2"]));
   const sourceUrl3 = toText(pick(row, ["Source URL 3", "Source 3"]));
@@ -1044,12 +1046,12 @@ function excelRowToLead(row: Record<string, unknown>): ParsedExcelLead {
   return {
     schoolName,
     state,
-    schoolType: toText(pick(row, ["School Type", "Type"])),
-    streamsFound: toText(pick(row, ["Streams Found", "Streams"])),
+    schoolType: toText(pick(row, ["School Type", "Type"])) || "",
+    streamsFound: toText(pick(row, ["Streams Found", "Streams"])) || "",
     latestDateTime: parseExcelDate(
       pick(row, ["Latest Date Time", "Latest Date", "Date"])
     ),
-    latestFile: toText(pick(row, ["Latest File", "File"])),
+    latestFile: toText(pick(row, ["Latest File", "File"])) || "",
     totalFilesVersions: parseNumber(
       pick(row, ["Total Files/Versions", "Total Files", "Versions"])
     ),
