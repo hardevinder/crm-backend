@@ -9,10 +9,12 @@ import {
   listLocalTemplates,
   prepareCampaignRecipients,
   sendCampaign,
+  sendManualReplyToLead,
   sendTemplateToLead,
   syncTemplatesFromMeta,
   updateCampaign,
 } from "./whatsapp-campaign.service.js";
+
 import type {
   CampaignListQuery,
   CampaignRecipientQuery,
@@ -20,6 +22,7 @@ import type {
   CreateTemplateBody,
   PrepareCampaignRecipientsBody,
   SendCampaignBody,
+  SendManualReplyBody,
   SendTemplateToLeadBody,
   SyncTemplatesQuery,
   UpdateCampaignBody,
@@ -31,11 +34,17 @@ function parseId(value: string): number | null {
 }
 
 function handleError(reply: FastifyReply, error: unknown) {
-  const message = error instanceof Error ? error.message : "Internal server error";
+  const message =
+    error instanceof Error ? error.message : "Internal server error";
+
+  const lowerMessage = message.toLowerCase();
+
   const statusCode =
-    message.toLowerCase().includes("not found") ? 404 :
-    message.toLowerCase().includes("required") ? 400 :
-    message.toLowerCase().includes("invalid") ? 400 :
+    lowerMessage.includes("not found") ? 404 :
+    lowerMessage.includes("required") ? 400 :
+    lowerMessage.includes("invalid") ? 400 :
+    lowerMessage.includes("unauthorized") ? 401 :
+    lowerMessage.includes("forbidden") ? 403 :
     500;
 
   return reply.code(statusCode).send({
@@ -95,7 +104,12 @@ export async function listWhatsappCampaigns(
 ) {
   try {
     const result = await listCampaigns(request.query || {});
-    return reply.send({ success: true, data: result.items, pagination: result.pagination });
+
+    return reply.send({
+      success: true,
+      data: result.items,
+      pagination: result.pagination,
+    });
   } catch (error) {
     request.log.error({ error }, "Unable to list WhatsApp campaigns");
     return handleError(reply, error);
@@ -108,7 +122,13 @@ export async function getWhatsappCampaign(
 ) {
   try {
     const id = parseId(request.params.id);
-    if (!id) return reply.code(400).send({ success: false, message: "Invalid campaign id" });
+
+    if (!id) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid campaign id",
+      });
+    }
 
     const campaign = await getCampaignById(id);
     return reply.send({ success: true, data: campaign });
@@ -132,12 +152,21 @@ export async function createWhatsappCampaign(
 }
 
 export async function updateWhatsappCampaign(
-  request: FastifyRequest<{ Params: { id: string }; Body: UpdateCampaignBody }>,
+  request: FastifyRequest<{
+    Params: { id: string };
+    Body: UpdateCampaignBody;
+  }>,
   reply: FastifyReply
 ) {
   try {
     const id = parseId(request.params.id);
-    if (!id) return reply.code(400).send({ success: false, message: "Invalid campaign id" });
+
+    if (!id) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid campaign id",
+      });
+    }
 
     const campaign = await updateCampaign(id, request.body || {});
     return reply.send({ success: true, data: campaign });
@@ -156,12 +185,21 @@ export async function prepareWhatsappCampaignRecipients(
 ) {
   try {
     const id = parseId(request.params.id);
-    if (!id) return reply.code(400).send({ success: false, message: "Invalid campaign id" });
+
+    if (!id) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid campaign id",
+      });
+    }
 
     const result = await prepareCampaignRecipients(id, request.body || {});
     return reply.send({ success: true, ...result });
   } catch (error) {
-    request.log.error({ error }, "Unable to prepare WhatsApp campaign recipients");
+    request.log.error(
+      { error },
+      "Unable to prepare WhatsApp campaign recipients"
+    );
     return handleError(reply, error);
   }
 }
@@ -175,23 +213,46 @@ export async function listWhatsappCampaignRecipients(
 ) {
   try {
     const id = parseId(request.params.id);
-    if (!id) return reply.code(400).send({ success: false, message: "Invalid campaign id" });
+
+    if (!id) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid campaign id",
+      });
+    }
 
     const result = await listCampaignRecipients(id, request.query || {});
-    return reply.send({ success: true, data: result.items, pagination: result.pagination });
+
+    return reply.send({
+      success: true,
+      data: result.items,
+      pagination: result.pagination,
+    });
   } catch (error) {
-    request.log.error({ error }, "Unable to list WhatsApp campaign recipients");
+    request.log.error(
+      { error },
+      "Unable to list WhatsApp campaign recipients"
+    );
     return handleError(reply, error);
   }
 }
 
 export async function sendWhatsappCampaign(
-  request: FastifyRequest<{ Params: { id: string }; Body: SendCampaignBody }>,
+  request: FastifyRequest<{
+    Params: { id: string };
+    Body: SendCampaignBody;
+  }>,
   reply: FastifyReply
 ) {
   try {
     const id = parseId(request.params.id);
-    if (!id) return reply.code(400).send({ success: false, message: "Invalid campaign id" });
+
+    if (!id) {
+      return reply.code(400).send({
+        success: false,
+        message: "Invalid campaign id",
+      });
+    }
 
     const result = await sendCampaign(id, request.body || {});
     return reply.send({ success: true, ...result });
@@ -207,9 +268,51 @@ export async function sendTemplateToSingleLead(
 ) {
   try {
     const result = await sendTemplateToLead(request.body || {});
-    return reply.send({ success: true, data: result });
+
+    return reply.send({
+      success: true,
+      message: "WhatsApp template sent successfully",
+      data: result,
+    });
   } catch (error) {
     request.log.error({ error }, "Unable to send WhatsApp template to lead");
+    return handleError(reply, error);
+  }
+}
+
+/**
+ * Manual reply from admin/team to a WhatsApp lead.
+ *
+ * This is for normal text replies inside the WhatsApp 24-hour customer service window.
+ * Example body:
+ * {
+ *   "leadId": 12,
+ *   "message": "Thank you ji, our team will contact you shortly."
+ * }
+ *
+ * OR:
+ * {
+ *   "to": "919876543210",
+ *   "message": "Thank you ji, our team will contact you shortly."
+ * }
+ */
+export async function sendManualWhatsappReply(
+  request: FastifyRequest<{ Body: SendManualReplyBody }>,
+  reply: FastifyReply
+) {
+  try {
+    const result = await sendManualReplyToLead(
+      request.body || {},
+      request as any
+    );
+
+    return reply.send({
+      success: true,
+      message: "Manual WhatsApp reply sent successfully",
+      data: result,
+    });
+  } catch (error) {
+    request.log.error({ error }, "Unable to send manual WhatsApp reply");
     return handleError(reply, error);
   }
 }

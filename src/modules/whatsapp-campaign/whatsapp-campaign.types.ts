@@ -68,6 +68,51 @@ export type SendTemplateToLeadBody = {
   templateVariables?: Record<string, string | number | null | undefined>;
 };
 
+export type SendManualReplyBody = {
+  /**
+   * Preferred when replying to a saved lead.
+   */
+  leadSchoolId?: number | string;
+
+  /**
+   * Alias for leadSchoolId.
+   * Useful if frontend sends leadId.
+   */
+  leadId?: number | string;
+
+  /**
+   * Direct WhatsApp/mobile number.
+   * Example: 919876543210
+   */
+  phoneNumber?: string;
+
+  /**
+   * Alias for phoneNumber.
+   * Useful if frontend sends to.
+   */
+  to?: string;
+
+  /**
+   * Manual text reply message.
+   */
+  message?: string;
+
+  /**
+   * Optional WhatsApp provider message id if replying to a specific inbound message.
+   */
+  replyToMessageId?: string;
+
+  /**
+   * Optional campaign reference.
+   */
+  campaignId?: number | string;
+
+  /**
+   * Optional campaign recipient reference.
+   */
+  campaignRecipientId?: number | string;
+};
+
 export type SyncTemplatesQuery = {
   limit?: string;
 };

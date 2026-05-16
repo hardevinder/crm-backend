@@ -26,6 +26,7 @@ import type {
   MetaTemplate,
   PrepareCampaignRecipientsBody,
   SendCampaignBody,
+  SendManualReplyBody,
   SendTemplateToLeadBody,
   UpdateCampaignBody,
   WhatsAppWebhookPayload,
@@ -874,6 +875,190 @@ export async function sendTemplateToLead(body: SendTemplateToLeadBody) {
   }
 
   return saved;
+}
+
+export async function sendManualReplyToLead(
+  body: SendManualReplyBody,
+  requestLike?: any
+) {
+  const messageText = toText(body.message);
+
+  if (!messageText) {
+    throw new Error("message is required");
+  }
+
+  const leadSchoolId = Number((body as any).leadSchoolId || (body as any).leadId);
+
+  let lead: any = null;
+  let phoneNumber =
+    toText((body as any).to) ||
+    toText((body as any).phoneNumber) ||
+    null;
+
+  let normalizedPhone = normalizePhone(phoneNumber);
+  let contactMethodId: number | null = null;
+
+  if (Number.isFinite(leadSchoolId) && leadSchoolId > 0) {
+    lead = await prisma.leadSchool.findFirst({
+      where: {
+        id: leadSchoolId,
+        deletedAt: null,
+      },
+      include: {
+        contactMethods: {
+          where: {
+            methodType: {
+              in: [ContactMethodType.WHATSAPP, ContactMethodType.MOBILE],
+            },
+          },
+          orderBy: [{ isPrimary: "desc" }, { id: "asc" }],
+        },
+      },
+    });
+
+    if (!lead) {
+      throw new Error("Lead not found");
+    }
+
+    const recipient = getRecipientPhone(lead);
+
+    if (!recipient) {
+      throw new Error("Lead has no WhatsApp/mobile number");
+    }
+
+    phoneNumber = recipient.phoneNumber;
+    normalizedPhone = recipient.normalizedPhoneNumber;
+    contactMethodId = recipient.contactMethodId;
+  }
+
+  if (!phoneNumber || !normalizedPhone) {
+    throw new Error("leadSchoolId, leadId, to, or phoneNumber is required");
+  }
+
+  const relatedOutbound = await findRelatedOutboundMessage({
+    contextProviderMessageId: null,
+    normalizedPhone,
+  });
+
+  const bodyCampaignId = Number((body as any).campaignId);
+  const bodyCampaignRecipientId = Number((body as any).campaignRecipientId);
+
+  const campaignId =
+    Number.isFinite(bodyCampaignId) && bodyCampaignId > 0
+      ? bodyCampaignId
+      : relatedOutbound?.campaignId || null;
+
+  const campaignRecipientId =
+    Number.isFinite(bodyCampaignRecipientId) && bodyCampaignRecipientId > 0
+      ? bodyCampaignRecipientId
+      : relatedOutbound?.campaignRecipientId || null;
+
+  const replyToMessageId = toText((body as any).replyToMessageId);
+  const userId = getOptionalUserId(requestLike);
+  const now = new Date();
+
+  const finalLeadSchoolId = lead?.id || relatedOutbound?.leadSchoolId || null;
+  const finalContactMethodId =
+    contactMethodId || relatedOutbound?.contactMethodId || null;
+
+  try {
+    const response = await sendWhatsAppTextMessage(
+      normalizedPhone,
+      messageText,
+      replyToMessageId || undefined
+    );
+
+    const saved = await prisma.leadWhatsappMessage.create({
+      data: {
+        leadSchoolId: finalLeadSchoolId,
+        contactMethodId: finalContactMethodId,
+        campaignId,
+        campaignRecipientId,
+        direction: WhatsAppDirection.OUTBOUND,
+        messageType: WhatsAppMessageType.TEXT,
+        status: WhatsAppMessageStatus.SENT,
+        phoneNumber,
+        normalizedPhone,
+        messageText,
+        providerMessageId: response.messageId || null,
+        contextProviderMessageId: replyToMessageId,
+        rawPayload: response.raw as Prisma.InputJsonValue,
+        sentAt: now,
+        statusUpdatedAt: now,
+      },
+    });
+
+    if (finalLeadSchoolId) {
+      const currentLead = await prisma.leadSchool.findUnique({
+        where: { id: finalLeadSchoolId },
+      });
+
+      await prisma.$transaction([
+        prisma.leadSchool.update({
+          where: { id: finalLeadSchoolId },
+          data: {
+            source: LeadSource.WHATSAPP,
+          },
+        }),
+        prisma.leadFollowUp.create({
+          data: {
+            leadSchoolId: finalLeadSchoolId,
+            followUpType: LeadFollowUpType.WHATSAPP,
+            previousStatus: currentLead?.status || null,
+            nextStatus: currentLead?.status || LeadStatus.WHATSAPP_SENT,
+            remarks: `Manual WhatsApp reply sent${
+              userId ? ` by user #${userId}` : ""
+            }: ${messageText}`,
+          },
+        }),
+      ]);
+    }
+
+    return saved;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown WhatsApp manual reply error";
+
+    await prisma.leadWhatsappMessage.create({
+      data: {
+        leadSchoolId: finalLeadSchoolId,
+        contactMethodId: finalContactMethodId,
+        campaignId,
+        campaignRecipientId,
+        direction: WhatsAppDirection.OUTBOUND,
+        messageType: WhatsAppMessageType.TEXT,
+        status: WhatsAppMessageStatus.FAILED,
+        phoneNumber,
+        normalizedPhone,
+        messageText,
+        contextProviderMessageId: replyToMessageId,
+        errorMessage,
+        rawPayload: { error: errorMessage } as Prisma.InputJsonValue,
+        failedAt: now,
+        statusUpdatedAt: now,
+      },
+    });
+
+    if (finalLeadSchoolId) {
+      const currentLead = await prisma.leadSchool.findUnique({
+        where: { id: finalLeadSchoolId },
+      });
+
+      await prisma.leadFollowUp.create({
+        data: {
+          leadSchoolId: finalLeadSchoolId,
+          followUpType: LeadFollowUpType.WHATSAPP,
+          previousStatus: currentLead?.status || null,
+          nextStatus: currentLead?.status || LeadStatus.WHATSAPP_SENT,
+          remarks: `Manual WhatsApp reply failed${
+            userId ? ` by user #${userId}` : ""
+          }: ${errorMessage}`,
+        },
+      });
+    }
+
+    throw new Error(errorMessage);
+  }
 }
 
 function statusToEnums(status: string) {
