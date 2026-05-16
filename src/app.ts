@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { env } from "./config/env.js";
 import jwtPlugin from "./plugins/jwt.js";
 import routes from "./routes/index.js";
-import whatsappWebhookRoutes from "./modules/whatsapp/webhook.routes.js";
 import leadRoutes from "./modules/lead-generation/lead.routes.js";
+import whatsappWebhookRoutes from "./modules/whatsapp-webhook/webhook.routes.js";
+import whatsappCampaignRoutes from "./modules/whatsapp-campaign/whatsapp-campaign.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,7 +24,9 @@ function normalizeOrigin(origin?: string | null) {
 export async function buildApp() {
   const app = Fastify({
     logger: true,
-    ignoreTrailingSlash: true,
+    routerOptions: {
+      ignoreTrailingSlash: true,
+    },
   });
 
   const allowedOrigins = [
@@ -64,16 +67,17 @@ export async function buildApp() {
     prefix: "/uploads/",
   });
 
-  // Public WhatsApp webhook route
-  // Final URL: http://localhost:5005/webhooks/whatsapp
+  // Public WhatsApp webhook route.
+  // Final URL:
+  // https://api-crm.edubridgeerp.in/webhooks/whatsapp
   await app.register(whatsappWebhookRoutes, {
     prefix: "/webhooks/whatsapp",
   });
 
   await app.register(jwtPlugin);
 
-  // Main CRM API routes
-  // Existing routes final URLs:
+  // Main CRM API routes.
+  // Final URLs:
   // /api/auth/login
   // /api/crm/clients
   // /api/crm/invoices
@@ -82,7 +86,7 @@ export async function buildApp() {
     prefix: "/api",
   });
 
-  // SRM / Lead Generation routes
+  // SRM / Lead Generation routes.
   // Final URLs:
   // /api/leads
   // /api/leads/ping
@@ -90,6 +94,16 @@ export async function buildApp() {
   // /api/leads/import-excel
   await app.register(leadRoutes, {
     prefix: "/api",
+  });
+
+  // WhatsApp Campaign routes.
+  // Final URLs:
+  // /api/whatsapp-campaigns
+  // /api/whatsapp-campaigns/templates/sync
+  // /api/whatsapp-campaigns/:id/send
+  // /api/whatsapp-campaigns/:id/report
+  await app.register(whatsappCampaignRoutes, {
+    prefix: "/api/whatsapp-campaigns",
   });
 
   app.get("/health", async () => {

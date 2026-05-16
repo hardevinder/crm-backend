@@ -466,6 +466,22 @@ enum WhatsAppDirection {
   INBOUND
 }
 
+enum WhatsAppMessageType {
+  TEXT
+  TEMPLATE
+  BUTTON
+  INTERACTIVE
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  STICKER
+  CONTACTS
+  LOCATION
+  SYSTEM
+  UNKNOWN
+}
+
 enum WhatsAppMessageStatus {
   QUEUED
   SENT
@@ -608,7 +624,8 @@ model LeadContactMethod {
   verificationStatus String?           @db.VarChar(120)
   notes              String?           @db.Text
 
-  whatsappMessages LeadWhatsappMessage[]
+  whatsappMessages   LeadWhatsappMessage[]
+  campaignRecipients LeadCampaignRecipient[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -645,7 +662,7 @@ model LeadFollowUp {
 
 model LeadWhatsappTemplate {
   id           Int                    @id @default(autoincrement())
-  templateName String                 @unique @db.VarChar(150)
+  templateName String                 @db.VarChar(150)
   displayName  String?                @db.VarChar(150)
   languageCode String                 @default("en") @db.VarChar(20)
   category     String?                @db.VarChar(80)
@@ -663,6 +680,7 @@ model LeadWhatsappTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([templateName, languageCode])
   @@index([status])
   @@index([languageCode])
   @@map("lead_whatsapp_templates")
@@ -714,29 +732,40 @@ model LeadCampaignRecipient {
   leadSchoolId Int
   leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
 
-  phoneNumber  String?                     @db.VarChar(30)
-  status       LeadCampaignRecipientStatus @default(PENDING)
-  errorMessage String?                     @db.Text
-  sentAt       DateTime?
-  deliveredAt  DateTime?
-  readAt       DateTime?
-  repliedAt    DateTime?
+  contactMethodId Int?
+  contactMethod   LeadContactMethod? @relation(fields: [contactMethodId], references: [id], onDelete: SetNull)
+
+  phoneNumber           String                      @db.VarChar(30)
+  normalizedPhoneNumber String                      @db.VarChar(30)
+  status                LeadCampaignRecipientStatus @default(PENDING)
+  providerMessageId     String?                     @db.VarChar(255)
+  errorMessage          String?                     @db.Text
+
+  queuedAt    DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  repliedAt   DateTime?
+  failedAt    DateTime?
 
   whatsappMessages LeadWhatsappMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([campaignId, leadSchoolId])
+  @@unique([campaignId, normalizedPhoneNumber])
   @@index([leadSchoolId])
+  @@index([contactMethodId])
+  @@index([providerMessageId])
   @@index([status])
   @@map("lead_campaign_recipients")
 }
 
 model LeadWhatsappMessage {
-  id           Int        @id @default(autoincrement())
-  leadSchoolId Int
-  leadSchool   LeadSchool @relation(fields: [leadSchoolId], references: [id], onDelete: Cascade)
+  id Int @id @default(autoincrement())
+
+  leadSchoolId Int?
+  leadSchool   LeadSchool? @relation(fields: [leadSchoolId], references: [id], onDelete: SetNull)
 
   contactMethodId Int?
   contactMethod   LeadContactMethod? @relation(fields: [contactMethodId], references: [id], onDelete: SetNull)
@@ -747,17 +776,33 @@ model LeadWhatsappMessage {
   campaignRecipientId Int?
   campaignRecipient   LeadCampaignRecipient? @relation(fields: [campaignRecipientId], references: [id], onDelete: SetNull)
 
-  direction         WhatsAppDirection
-  phoneNumber       String                @db.VarChar(30)
-  templateName      String?               @db.VarChar(150)
-  campaignName      String?               @db.VarChar(150)
-  messageText       String?               @db.Text
-  providerMessageId String?               @unique @db.VarChar(255)
-  status            WhatsAppMessageStatus @default(QUEUED)
-  errorMessage      String?               @db.Text
-  rawPayload        Json?
-  sentAt            DateTime?
-  receivedAt        DateTime?
+  direction   WhatsAppDirection
+  messageType WhatsAppMessageType   @default(TEXT)
+  status      WhatsAppMessageStatus @default(QUEUED)
+
+  phoneNumber     String  @db.VarChar(30)
+  normalizedPhone String? @db.VarChar(30)
+  templateName    String? @db.VarChar(150)
+  campaignName    String? @db.VarChar(180)
+  messageText     String? @db.Text
+  buttonText      String? @db.VarChar(255)
+  buttonPayload   String? @db.VarChar(255)
+
+  providerMessageId        String? @unique @db.VarChar(255)
+  contextProviderMessageId String? @db.VarChar(255)
+  providerConversationId   String? @db.VarChar(255)
+  pricingCategory          String? @db.VarChar(80)
+
+  errorMessage String? @db.Text
+  rawPayload   Json?
+
+  queuedAt        DateTime?
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  failedAt        DateTime?
+  receivedAt      DateTime?
+  statusUpdatedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -767,7 +812,11 @@ model LeadWhatsappMessage {
   @@index([campaignId])
   @@index([campaignRecipientId])
   @@index([phoneNumber])
+  @@index([normalizedPhone])
   @@index([campaignName])
-  @@index([status])
+  @@index([providerMessageId])
+  @@index([contextProviderMessageId])
+  @@index([direction, status])
+  @@index([messageType])
   @@map("lead_whatsapp_messages")
 }
