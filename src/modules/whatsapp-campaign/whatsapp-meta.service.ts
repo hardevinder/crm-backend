@@ -33,11 +33,20 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+function shouldLogWhatsAppDebug(): boolean {
+  // Logs in local/dev by default.
+  // In production, set WHATSAPP_DEBUG_PAYLOAD=true to enable.
+  if (process.env.WHATSAPP_DEBUG_PAYLOAD === "true") return true;
+  if (process.env.WHATSAPP_DEBUG_PAYLOAD === "false") return false;
+
+  return process.env.NODE_ENV !== "production";
+}
+
 function getApiErrorMessage(data: any, fallback: string): string {
   return (
-    data?.error?.message ||
-    data?.error?.error_user_msg ||
     data?.error?.error_data?.details ||
+    data?.error?.error_user_msg ||
+    data?.error?.message ||
     fallback
   );
 }
@@ -134,7 +143,9 @@ function buildTemplateComponents(variables?: TemplateVariables) {
 
       return parameter;
     })
-    .filter((parameter): parameter is Record<string, string> => Boolean(parameter));
+    .filter((parameter): parameter is Record<string, string> =>
+      Boolean(parameter)
+    );
 
   if (parameters.length === 0) return undefined;
 
@@ -173,6 +184,27 @@ export async function sendTemplateMessage(
     template: templatePayload,
   };
 
+  if (shouldLogWhatsAppDebug()) {
+    console.log(
+      "WHATSAPP_TEMPLATE_INPUT",
+      JSON.stringify(
+        {
+          to: normalizeWhatsAppNumber(input.to),
+          templateName: input.templateName,
+          languageCode: input.languageCode || "en",
+          variables: input.variables || null,
+        },
+        null,
+        2
+      )
+    );
+
+    console.log(
+      "WHATSAPP_TEMPLATE_PAYLOAD",
+      JSON.stringify(payload, null, 2)
+    );
+  }
+
   const response = await fetch(
     `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
     {
@@ -188,6 +220,8 @@ export async function sendTemplateMessage(
   const data = (await response.json().catch(() => ({}))) as any;
 
   if (!response.ok) {
+    console.error("WHATSAPP_TEMPLATE_ERROR", JSON.stringify(data, null, 2));
+
     throw new Error(
       getApiErrorMessage(data, `WhatsApp API failed with ${response.status}`)
     );
@@ -228,6 +262,23 @@ export async function sendTextMessage(
     };
   }
 
+  if (shouldLogWhatsAppDebug()) {
+    console.log(
+      "WHATSAPP_TEXT_PAYLOAD",
+      JSON.stringify(
+        {
+          ...payload,
+          text: {
+            preview_url: Boolean(input.previewUrl),
+            body,
+          },
+        },
+        null,
+        2
+      )
+    );
+  }
+
   const response = await fetch(
     `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
     {
@@ -243,6 +294,8 @@ export async function sendTextMessage(
   const data = (await response.json().catch(() => ({}))) as any;
 
   if (!response.ok) {
+    console.error("WHATSAPP_TEXT_ERROR", JSON.stringify(data, null, 2));
+
     throw new Error(
       getApiErrorMessage(data, `WhatsApp text send failed with ${response.status}`)
     );
@@ -293,6 +346,8 @@ export async function fetchMetaTemplates(limit = 100): Promise<MetaTemplate[]> {
   const data = (await response.json().catch(() => ({}))) as any;
 
   if (!response.ok) {
+    console.error("WHATSAPP_TEMPLATE_FETCH_ERROR", JSON.stringify(data, null, 2));
+
     throw new Error(
       getApiErrorMessage(data, `Template fetch failed with ${response.status}`)
     );
