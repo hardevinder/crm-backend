@@ -1,10 +1,14 @@
 import type { MetaTemplate } from "./whatsapp-campaign.types.js";
 
+type TemplateVariableValue = string | number | null | undefined;
+
+type TemplateVariables = Record<string, TemplateVariableValue>;
+
 type SendTemplateMessageInput = {
   to: string;
   templateName: string;
   languageCode?: string;
-  variables?: Record<string, string | number | null | undefined>;
+  variables?: TemplateVariables;
 };
 
 type SendTextMessageInput = {
@@ -78,32 +82,59 @@ export function normalizeWhatsAppNumber(value: string): string {
   return phone;
 }
 
-function buildTemplateComponents(
-  variables?: Record<string, string | number | null | undefined>
-) {
+function cleanTemplateVariableKey(key: string): string {
+  return String(key || "")
+    .replace(/^\{\{\s*/, "")
+    .replace(/\s*\}\}$/, "")
+    .trim();
+}
+
+function isNumberedTemplateVariable(key: string): boolean {
+  return /^\d+$/.test(cleanTemplateVariableKey(key));
+}
+
+function buildTemplateComponents(variables?: TemplateVariables) {
   if (!variables || Object.keys(variables).length === 0) return undefined;
 
   const sortedKeys = Object.keys(variables).sort((a, b) => {
-    const aNumber = Number(a.replace(/[^0-9]/g, ""));
-    const bNumber = Number(b.replace(/[^0-9]/g, ""));
+    const cleanA = cleanTemplateVariableKey(a);
+    const cleanB = cleanTemplateVariableKey(b);
 
-    const aHasNumber = Number.isFinite(aNumber) && /\d/.test(a);
-    const bHasNumber = Number.isFinite(bNumber) && /\d/.test(b);
+    const aNumber = Number(cleanA);
+    const bNumber = Number(cleanB);
 
-    if (aHasNumber && bHasNumber) {
+    const aIsNumber = Number.isFinite(aNumber) && /^\d+$/.test(cleanA);
+    const bIsNumber = Number.isFinite(bNumber) && /^\d+$/.test(cleanB);
+
+    if (aIsNumber && bIsNumber) {
       return aNumber - bNumber;
     }
 
-    return a.localeCompare(b);
+    return cleanA.localeCompare(cleanB);
   });
 
   const parameters = sortedKeys
-    .map((key) => variables[key])
-    .filter((value) => value !== undefined && value !== null)
-    .map((value) => ({
-      type: "text",
-      text: String(value),
-    }));
+    .map((key) => {
+      const value = variables[key];
+
+      if (value === undefined || value === null) return null;
+
+      const cleanKey = cleanTemplateVariableKey(key);
+
+      const parameter: Record<string, string> = {
+        type: "text",
+        text: String(value),
+      };
+
+      // Required for named Meta variables like {{school_name}}.
+      // For numbered variables like {{1}}, do not send parameter_name.
+      if (cleanKey && !isNumberedTemplateVariable(cleanKey)) {
+        parameter.parameter_name = cleanKey;
+      }
+
+      return parameter;
+    })
+    .filter((parameter): parameter is Record<string, string> => Boolean(parameter));
 
   if (parameters.length === 0) return undefined;
 

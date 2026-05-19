@@ -32,6 +32,8 @@ import type {
   WhatsAppWebhookPayload,
 } from "./whatsapp-campaign.types.js";
 
+type TemplateVariables = Record<string, string | number | null | undefined>;
+
 function toText(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
@@ -214,8 +216,12 @@ function extractTemplateText(template: MetaTemplate) {
     headerText: header?.text || null,
     bodyText: body?.text || "",
     footerText: footer?.text || null,
-    buttonsJson: buttons?.buttons ? (buttons.buttons as Prisma.InputJsonValue) : Prisma.DbNull,
-    variablesJson: body?.example ? (body.example as Prisma.InputJsonValue) : Prisma.DbNull,
+    buttonsJson: buttons?.buttons
+      ? (buttons.buttons as Prisma.InputJsonValue)
+      : Prisma.DbNull,
+    variablesJson: body?.example
+      ? (body.example as Prisma.InputJsonValue)
+      : Prisma.DbNull,
   };
 }
 
@@ -281,6 +287,62 @@ function getRecipientPhone(lead: any): {
     normalizedPhoneNumber,
     contactMethodId: contact?.id || null,
   };
+}
+
+function extractTemplateVariableKeys(text?: string | null): string[] {
+  const source = String(text || "");
+  const keys: string[] = [];
+  const regex = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(source))) {
+    const key = String(match[1] || "").trim();
+
+    if (key && !keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+
+  return keys;
+}
+
+function buildLeadTemplateVariables(params: {
+  templateBodyText?: string | null;
+  lead?: any;
+  extra?: TemplateVariables;
+}): TemplateVariables | undefined {
+  const extra = params.extra || {};
+  const keys = extractTemplateVariableKeys(params.templateBodyText);
+
+  const schoolName =
+    toText(params.lead?.schoolName) ||
+    toText(extra.school_name) ||
+    toText(extra.schoolName) ||
+    toText(extra["1"]) ||
+    "School";
+
+  if (keys.length === 0) {
+    return Object.keys(extra).length > 0 ? extra : undefined;
+  }
+
+  const variables: TemplateVariables = {};
+
+  for (const key of keys) {
+    if (extra[key] !== undefined && extra[key] !== null) {
+      variables[key] = extra[key];
+      continue;
+    }
+
+    if (key === "school_name" || key === "schoolName" || key === "1") {
+      variables[key] = schoolName;
+      continue;
+    }
+
+    variables[key] = "";
+  }
+
+  return variables;
 }
 
 export async function syncTemplatesFromMeta(limit = 100) {
@@ -655,16 +717,48 @@ export async function prepareCampaignRecipients(
 
 async function resolveCampaignTemplate(campaign: any) {
   if (campaign.template) {
+    if (campaign.template.status !== WhatsappTemplateStatus.APPROVED) {
+      throw new Error(
+        `Template ${campaign.template.templateName} is not approved yet`
+      );
+    }
+
     return {
       templateName: campaign.template.templateName,
       languageCode: campaign.template.languageCode,
+      bodyText: campaign.template.bodyText,
     };
   }
 
   if (campaign.templateName) {
+    const localTemplate = await prisma.leadWhatsappTemplate.findFirst({
+      where: {
+        templateName: campaign.templateName,
+        languageCode: "en",
+      },
+      orderBy: {
+        id: "desc",
+      },
+    });
+
+    if (localTemplate) {
+      if (localTemplate.status !== WhatsappTemplateStatus.APPROVED) {
+        throw new Error(
+          `Template ${localTemplate.templateName} is not approved yet`
+        );
+      }
+
+      return {
+        templateName: localTemplate.templateName,
+        languageCode: localTemplate.languageCode,
+        bodyText: localTemplate.bodyText,
+      };
+    }
+
     return {
       templateName: campaign.templateName,
       languageCode: "en",
+      bodyText: null,
     };
   }
 
@@ -680,6 +774,14 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
         where: { status: LeadCampaignRecipientStatus.PENDING },
         orderBy: { id: "asc" },
         take: Math.min(safeInt(body.limit, 200), 1000),
+        include: {
+          leadSchool: {
+            select: {
+              id: true,
+              schoolName: true,
+            },
+          },
+        },
       },
     },
   });
@@ -693,6 +795,11 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
       dryRun: true,
       template,
       pendingRecipients: campaign.recipients.length,
+      sampleVariables: buildLeadTemplateVariables({
+        templateBodyText: template.bodyText,
+        lead: campaign.recipients[0]?.leadSchool,
+        extra: body.templateVariables,
+      }),
     };
   }
 
@@ -714,7 +821,11 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
         to: recipient.normalizedPhoneNumber,
         templateName: template.templateName,
         languageCode: template.languageCode,
-        variables: body.templateVariables,
+        variables: buildLeadTemplateVariables({
+          templateBodyText: template.bodyText,
+          lead: recipient.leadSchool,
+          extra: body.templateVariables,
+        }),
       });
 
       const now = new Date();
@@ -762,7 +873,11 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : "Unknown WhatsApp send error";
-      errors.push({ recipientId: recipient.id, phoneNumber: recipient.phoneNumber, error: message });
+      errors.push({
+        recipientId: recipient.id,
+        phoneNumber: recipient.phoneNumber,
+        error: message,
+      });
 
       await prisma.leadCampaignRecipient.update({
         where: { id: recipient.id },
@@ -801,6 +916,7 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
 export async function sendTemplateToLead(body: SendTemplateToLeadBody) {
   const leadSchoolId = Number(body.leadSchoolId);
   const templateName = toText(body.templateName);
+  const languageCode = body.languageCode || "en";
 
   if (!Number.isFinite(leadSchoolId) && !body.phoneNumber) {
     throw new Error("leadSchoolId or phoneNumber is required");
@@ -840,11 +956,29 @@ export async function sendTemplateToLead(body: SendTemplateToLeadBody) {
 
   if (!normalizedPhone || !phoneNumber) throw new Error("Invalid phone number");
 
+  const localTemplate = await prisma.leadWhatsappTemplate.findFirst({
+    where: {
+      templateName,
+      languageCode,
+    },
+    orderBy: {
+      id: "desc",
+    },
+  });
+
+  if (localTemplate && localTemplate.status !== WhatsappTemplateStatus.APPROVED) {
+    throw new Error(`Template ${localTemplate.templateName} is not approved yet`);
+  }
+
   const response = await sendTemplateMessage({
     to: normalizedPhone,
     templateName,
-    languageCode: body.languageCode || "en",
-    variables: body.templateVariables,
+    languageCode,
+    variables: buildLeadTemplateVariables({
+      templateBodyText: localTemplate?.bodyText,
+      lead,
+      extra: body.templateVariables,
+    }),
   });
 
   const now = new Date();
@@ -1208,10 +1342,6 @@ async function handleStatus(status: Record<string, any>, rawPayload: unknown) {
     });
   }
 
-  // Important:
-  // Do not update a campaign recipient only by phone number here.
-  // Auto-replies and manual replies also generate status events for the same phone,
-  // and phone-only matching can accidentally change the original campaign recipient.
   const recipient =
     existingMessage?.campaignRecipientId
       ? await prisma.leadCampaignRecipient.findUnique({

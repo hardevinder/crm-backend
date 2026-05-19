@@ -6,6 +6,23 @@ import type {
   WhatsappTemplateStatus,
 } from "@prisma/client";
 
+/**
+ * Common variable value type used while sending WhatsApp templates.
+ *
+ * Examples:
+ * {
+ *   school_name: "Test School"
+ * }
+ *
+ * OR for numbered variables:
+ * {
+ *   "1": "Test School"
+ * }
+ */
+export type TemplateVariableValue = string | number | null | undefined;
+
+export type TemplateVariables = Record<string, TemplateVariableValue>;
+
 export type CampaignListQuery = {
   page?: string;
   limit?: string;
@@ -35,9 +52,24 @@ export type CampaignLeadFilter = {
 export type CreateCampaignBody = {
   title?: string;
   description?: string;
+
+  /**
+   * Local DB template id.
+   */
   templateId?: number | string;
+
+  /**
+   * Meta template name.
+   * Example: edubridge_erp_ai_demo_video
+   */
   templateName?: string;
+
+  /**
+   * Meta template language code.
+   * Example: en
+   */
   languageCode?: string;
+
   targetFilters?: CampaignLeadFilter;
   leadIds?: Array<number | string>;
   scheduledAt?: string | null;
@@ -56,16 +88,43 @@ export type PrepareCampaignRecipientsBody = {
 export type SendCampaignBody = {
   limit?: number | string;
   dryRun?: boolean;
-  templateVariables?: Record<string, string | number | null | undefined>;
+
+  /**
+   * Extra/static variables from frontend.
+   *
+   * Example:
+   * {
+   *   school_name: "ABC Public School"
+   * }
+   *
+   * Backend should merge this with lead-specific defaults.
+   */
+  templateVariables?: TemplateVariables;
 };
 
 export type SendTemplateToLeadBody = {
   leadSchoolId?: number | string;
   phoneNumber?: string;
+
   templateName?: string;
   languageCode?: string;
+
   campaignId?: number | string;
-  templateVariables?: Record<string, string | number | null | undefined>;
+
+  /**
+   * Variables required by selected Meta template.
+   *
+   * Named variable example:
+   * {
+   *   school_name: "ABC Public School"
+   * }
+   *
+   * Numbered variable example:
+   * {
+   *   "1": "ABC Public School"
+   * }
+   */
+  templateVariables?: TemplateVariables;
 };
 
 export type SendManualReplyBody = {
@@ -123,20 +182,46 @@ export type CreateTemplateBody = {
   languageCode?: string;
   category?: string;
   status?: WhatsappTemplateStatus;
+
   headerText?: string;
   bodyText?: string;
   footerText?: string;
+
   buttonsJson?: unknown;
+
+  /**
+   * Store detected variables from template body/header.
+   *
+   * Example:
+   * {
+   *   body: ["school_name"]
+   * }
+   */
   variablesJson?: unknown;
+
   providerTemplateId?: string;
 };
 
-export type MetaTemplateComponent = {
+export type MetaTemplateButton = {
   type?: string;
-  format?: string;
   text?: string;
-  buttons?: unknown;
+  url?: string;
+  phone_number?: string;
   example?: unknown;
+};
+
+export type MetaTemplateExample = {
+  header_text?: string[];
+  body_text?: string[][];
+  header_handle?: string[];
+};
+
+export type MetaTemplateComponent = {
+  type?: "HEADER" | "BODY" | "FOOTER" | "BUTTONS" | string;
+  format?: "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT" | "LOCATION" | string;
+  text?: string;
+  buttons?: MetaTemplateButton[] | unknown;
+  example?: MetaTemplateExample | unknown;
 };
 
 export type MetaTemplate = {
@@ -162,7 +247,9 @@ export type WhatsAppWebhookPayload = {
         };
         contacts?: Array<{
           wa_id?: string;
-          profile?: { name?: string };
+          profile?: {
+            name?: string;
+          };
           user_id?: string;
         }>;
         messages?: Array<Record<string, any>>;
