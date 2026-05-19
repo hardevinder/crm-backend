@@ -345,6 +345,34 @@ function buildLeadTemplateVariables(params: {
   return variables;
 }
 
+function getHeaderImageUrlForTemplate(templateName: string): string | undefined {
+  const headerImageUrl =
+    toText(process.env.WHATSAPP_TEMPLATE_HEADER_IMAGE_URL) || undefined;
+
+  const imageTemplates = String(
+    process.env.WHATSAPP_IMAGE_HEADER_TEMPLATE_NAMES || ""
+  )
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (imageTemplates.length > 0) {
+    if (!imageTemplates.includes(templateName)) {
+      return undefined;
+    }
+
+    if (!headerImageUrl) {
+      throw new Error(
+        `WHATSAPP_TEMPLATE_HEADER_IMAGE_URL is required for template ${templateName}`
+      );
+    }
+
+    return headerImageUrl;
+  }
+
+  return headerImageUrl;
+}
+
 export async function syncTemplatesFromMeta(limit = 100) {
   const templates = await fetchMetaTemplates(limit);
 
@@ -789,12 +817,14 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
   if (!campaign) throw new Error("Campaign not found");
 
   const template = await resolveCampaignTemplate(campaign);
+  const headerImageUrl = getHeaderImageUrlForTemplate(template.templateName);
 
   if (body.dryRun) {
     return {
       dryRun: true,
       template,
       pendingRecipients: campaign.recipients.length,
+      headerImageUrl: headerImageUrl || null,
       sampleVariables: buildLeadTemplateVariables({
         templateBodyText: template.bodyText,
         lead: campaign.recipients[0]?.leadSchool,
@@ -821,6 +851,7 @@ export async function sendCampaign(campaignId: number, body: SendCampaignBody = 
         to: recipient.normalizedPhoneNumber,
         templateName: template.templateName,
         languageCode: template.languageCode,
+        headerImageUrl,
         variables: buildLeadTemplateVariables({
           templateBodyText: template.bodyText,
           lead: recipient.leadSchool,
@@ -974,6 +1005,7 @@ export async function sendTemplateToLead(body: SendTemplateToLeadBody) {
     to: normalizedPhone,
     templateName,
     languageCode,
+    headerImageUrl: getHeaderImageUrlForTemplate(templateName),
     variables: buildLeadTemplateVariables({
       templateBodyText: localTemplate?.bodyText,
       lead,
