@@ -9,6 +9,12 @@ type SendTemplateMessageInput = {
   templateName: string;
   languageCode?: string;
   variables?: TemplateVariables;
+
+  /**
+   * Required for WhatsApp templates that have IMAGE header.
+   * Must be a public HTTPS direct image URL.
+   */
+  headerImageUrl?: string;
 };
 
 type SendTextMessageInput = {
@@ -157,6 +163,24 @@ function buildTemplateComponents(variables?: TemplateVariables) {
   ];
 }
 
+function buildHeaderImageComponent(headerImageUrl?: string) {
+  const url = String(headerImageUrl || "").trim();
+
+  if (!url) return undefined;
+
+  return {
+    type: "header",
+    parameters: [
+      {
+        type: "image",
+        image: {
+          link: url,
+        },
+      },
+    ],
+  };
+}
+
 export async function sendTemplateMessage(
   input: SendTemplateMessageInput
 ): Promise<WhatsAppSendResult> {
@@ -164,7 +188,13 @@ export async function sendTemplateMessage(
   const phoneNumberId = getWhatsAppPhoneNumberId();
   const accessToken = getWhatsAppAccessToken();
 
-  const components = buildTemplateComponents(input.variables);
+  const bodyComponents = buildTemplateComponents(input.variables);
+  const headerImageComponent = buildHeaderImageComponent(input.headerImageUrl);
+
+  const finalComponents = [
+    ...(headerImageComponent ? [headerImageComponent] : []),
+    ...(bodyComponents || []),
+  ];
 
   const templatePayload: Record<string, unknown> = {
     name: input.templateName,
@@ -173,8 +203,8 @@ export async function sendTemplateMessage(
     },
   };
 
-  if (components) {
-    templatePayload.components = components;
+  if (finalComponents.length > 0) {
+    templatePayload.components = finalComponents;
   }
 
   const payload: Record<string, unknown> = {
@@ -192,6 +222,7 @@ export async function sendTemplateMessage(
           to: normalizeWhatsAppNumber(input.to),
           templateName: input.templateName,
           languageCode: input.languageCode || "en",
+          headerImageUrl: input.headerImageUrl || null,
           variables: input.variables || null,
         },
         null,
