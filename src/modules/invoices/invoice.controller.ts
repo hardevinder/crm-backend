@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 
 const ADMIN_ROLES = ["superadmin", "admin", "accounts"];
@@ -47,34 +48,33 @@ function isUniqueConstraintError(error: unknown) {
  * Count can create duplicate numbers if an invoice was deleted,
  * skipped, or two requests run at the same time.
  */
-async function generateInvoiceNo(invoiceDate: Date) {
+async function generateInvoiceNo(invoiceDate: Date, offset = 0) {
   const year = invoiceDate.getFullYear();
   const prefix = `EB-INV-${year}-`;
 
-  const lastInvoice = await prisma.clientInvoice.findFirst({
+  const invoices = await prisma.clientInvoice.findMany({
     where: {
       invoiceNo: {
         startsWith: prefix,
       },
-    },
-    orderBy: {
-      invoiceNo: "desc",
     },
     select: {
       invoiceNo: true,
     },
   });
 
-  let nextNumber = 1;
+  let maxNumber = 0;
 
-  if (lastInvoice?.invoiceNo) {
-    const lastPart = lastInvoice.invoiceNo.split("-").pop();
-    const lastNumber = Number(lastPart);
+  for (const invoice of invoices) {
+    const lastPart = invoice.invoiceNo.split("-").pop();
+    const number = Number(lastPart);
 
-    if (!Number.isNaN(lastNumber)) {
-      nextNumber = lastNumber + 1;
+    if (!Number.isNaN(number) && number > maxNumber) {
+      maxNumber = number;
     }
   }
+
+  const nextNumber = maxNumber + 1 + offset;
 
   return `${prefix}${String(nextNumber).padStart(5, "0")}`;
 }
@@ -88,22 +88,10 @@ type GenerateInvoiceBody = {
   notes?: string;
 };
 
-type InvoiceCreateData = {
-  clientId: number;
-  subscriptionId: number;
-  invoiceDate: Date;
-  dueDate: Date;
-  billingPeriodFrom?: Date;
-  billingPeriodTo?: Date;
-  subtotal: string;
-  gstPercent: string;
-  gstAmount: string;
-  totalAmount: string;
-  paidAmount: string;
-  balanceAmount: string;
-  status: "unpaid" | "paid" | "partially_paid" | "cancelled" | "overdue";
-  notes?: string;
-};
+type InvoiceCreateData = Omit<
+  Prisma.ClientInvoiceUncheckedCreateInput,
+  "id" | "invoiceNo" | "createdAt" | "updatedAt"
+>;
 
 async function createInvoiceWithUniqueNo(
   data: InvoiceCreateData,
@@ -112,7 +100,7 @@ async function createInvoiceWithUniqueNo(
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const invoiceNo = await generateInvoiceNo(invoiceDate);
+    const invoiceNo = await generateInvoiceNo(invoiceDate, attempt - 1);
 
     try {
       return await prisma.clientInvoice.create({
@@ -140,9 +128,7 @@ async function createInvoiceWithUniqueNo(
 
   console.error("Unable to generate unique invoice number", lastError);
 
-  throw new Error(
-    "Unable to generate unique invoice number. Please try again."
-  );
+  throw new Error("Unable to generate unique invoice number. Please try again.");
 }
 
 export async function generateInvoice(
