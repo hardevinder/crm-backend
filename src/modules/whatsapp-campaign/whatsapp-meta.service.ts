@@ -1,6 +1,6 @@
 import type { MetaTemplate } from "./whatsapp-campaign.types.js";
 
-type TemplateVariableValue = string | number | null | undefined;
+type TemplateVariableValue = string | number | boolean | null | undefined;
 
 type TemplateVariables = Record<string, TemplateVariableValue>;
 
@@ -28,6 +28,15 @@ type WhatsAppSendResult = {
   raw: any;
   messageId?: string;
 };
+
+const HEADER_IMAGE_VARIABLE_KEYS = [
+  "headerImageUrl",
+  "header_image_url",
+  "imageUrl",
+  "image_url",
+  "headerImage",
+  "header_image",
+];
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
@@ -106,6 +115,80 @@ function cleanTemplateVariableKey(key: string): string {
 
 function isNumberedTemplateVariable(key: string): boolean {
   return /^\d+$/.test(cleanTemplateVariableKey(key));
+}
+
+function getVariableString(
+  variables: TemplateVariables | undefined,
+  keys: string[]
+): string {
+  if (!variables) return "";
+
+  for (const key of keys) {
+    const value = variables[key];
+
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function shouldUseDefaultHeaderImage(templateName: string): boolean {
+  // Safe option 1: enable default header image only for selected template names.
+  // Example:
+  // WHATSAPP_IMAGE_HEADER_TEMPLATE_NAMES=school_fee_reminder,admission_offer
+  const allowedTemplateNames = String(
+    process.env.WHATSAPP_IMAGE_HEADER_TEMPLATE_NAMES || ""
+  )
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (
+    allowedTemplateNames.includes(String(templateName || "").trim().toLowerCase())
+  ) {
+    return true;
+  }
+
+  // Safe option 2: force default image for all templates.
+  // Use this only if all selected templates have IMAGE header.
+  return process.env.WHATSAPP_ATTACH_DEFAULT_HEADER_IMAGE === "true";
+}
+
+function resolveHeaderImageUrl(input: SendTemplateMessageInput): string {
+  const fromInput = String(input.headerImageUrl || "").trim();
+
+  if (fromInput) return fromInput;
+
+  const fromVariables = getVariableString(
+    input.variables,
+    HEADER_IMAGE_VARIABLE_KEYS
+  );
+
+  if (fromVariables) return fromVariables;
+
+  const fromEnv = String(process.env.WHATSAPP_DEFAULT_HEADER_IMAGE_URL || "").trim();
+
+  if (fromEnv && shouldUseDefaultHeaderImage(input.templateName)) {
+    return fromEnv;
+  }
+
+  return "";
+}
+
+function removeHeaderImageVariables(
+  variables?: TemplateVariables
+): TemplateVariables | undefined {
+  if (!variables || Object.keys(variables).length === 0) return undefined;
+
+  const cleanVariables: TemplateVariables = { ...variables };
+
+  for (const key of HEADER_IMAGE_VARIABLE_KEYS) {
+    delete cleanVariables[key];
+  }
+
+  return cleanVariables;
 }
 
 function buildTemplateComponents(variables?: TemplateVariables) {
@@ -188,8 +271,11 @@ export async function sendTemplateMessage(
   const phoneNumberId = getWhatsAppPhoneNumberId();
   const accessToken = getWhatsAppAccessToken();
 
-  const bodyComponents = buildTemplateComponents(input.variables);
-  const headerImageComponent = buildHeaderImageComponent(input.headerImageUrl);
+  const headerImageUrl = resolveHeaderImageUrl(input);
+  const bodyVariables = removeHeaderImageVariables(input.variables);
+
+  const bodyComponents = buildTemplateComponents(bodyVariables);
+  const headerImageComponent = buildHeaderImageComponent(headerImageUrl);
 
   const finalComponents = [
     ...(headerImageComponent ? [headerImageComponent] : []),
@@ -222,8 +308,10 @@ export async function sendTemplateMessage(
           to: normalizeWhatsAppNumber(input.to),
           templateName: input.templateName,
           languageCode: input.languageCode || "en",
-          headerImageUrl: input.headerImageUrl || null,
+          headerImageUrl: headerImageUrl || null,
+          originalHeaderImageUrl: input.headerImageUrl || null,
           variables: input.variables || null,
+          bodyVariables: bodyVariables || null,
         },
         null,
         2
@@ -328,7 +416,10 @@ export async function sendTextMessage(
     console.error("WHATSAPP_TEXT_ERROR", JSON.stringify(data, null, 2));
 
     throw new Error(
-      getApiErrorMessage(data, `WhatsApp text send failed with ${response.status}`)
+      getApiErrorMessage(
+        data,
+        `WhatsApp text send failed with ${response.status}`
+      )
     );
   }
 
