@@ -179,6 +179,9 @@ export function renderInvoicePdfHtml({
   const gstPercent = Number(invoice.gstPercent || 0);
   const gstAmount = Number(invoice.gstAmount || 0);
   const hasGst = gstPercent > 0 || gstAmount > 0;
+  const amountPayableNow =
+    balanceAmount > 0 ? balanceAmount : Math.max(totalAmount - paidAmount, 0);
+  const hasBalance = amountPayableNow > 0;
 
   const period =
     invoice.billingPeriodFrom || invoice.billingPeriodTo
@@ -580,15 +583,27 @@ export function renderInvoicePdfHtml({
       text-align: right;
     }
 
-    .grand {
-      background: ${primary};
+    .package-total {
+      background: #f8fafc;
     }
 
-    .grand .total-label,
-    .grand .total-value {
+    .package-total .total-label,
+    .package-total .total-value {
+      color: #334155;
+      font-weight: 800;
+    }
+
+    .payable-total {
+      background: linear-gradient(90deg, ${secondary}, ${primary});
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .payable-total .total-label,
+    .payable-total .total-value {
       color: #ffffff;
       font-weight: 900;
-      font-size: 12px;
+      font-size: 12.5px;
     }
 
     .notes-grid {
@@ -784,25 +799,28 @@ export function renderInvoicePdfHtml({
                 </div>`
               : ""
           }
-          <div class="total-row grand">
-            <span class="total-label">Grand Total</span>
+          <div class="total-row package-total">
+            <span class="total-label">Annual Package Total</span>
             <span class="total-value">${formatCurrency(totalAmount)}</span>
           </div>
           ${
             paidAmount > 0
               ? `<div class="total-row">
-                  <span class="total-label">Paid Amount</span>
+                  <span class="total-label">Already Received</span>
                   <span class="total-value">${formatCurrency(paidAmount)}</span>
                 </div>`
               : ""
           }
           ${
-            balanceAmount > 0
-              ? `<div class="total-row">
-                  <span class="total-label">Balance Amount</span>
-                  <span class="total-value">${formatCurrency(balanceAmount)}</span>
+            hasBalance
+              ? `<div class="total-row payable-total">
+                  <span class="total-label">Amount Payable Now</span>
+                  <span class="total-value">${formatCurrency(amountPayableNow)}</span>
                 </div>`
-              : ""
+              : `<div class="total-row payable-total">
+                  <span class="total-label">Payment Status</span>
+                  <span class="total-value">Paid in Full</span>
+                </div>`
           }
         </div>
       </div>
@@ -819,16 +837,10 @@ export function renderInvoicePdfHtml({
       }
 
       ${
-        company.footerNote || invoice.notes
+        invoice.notes
           ? `<div class="notes-card">
               <div class="section-head">Notes</div>
-              <div class="notes-body">
-                ${
-                  company.footerNote
-                    ? nl2br(company.footerNote)
-                    : "Thank you for your business."
-                }
-              </div>
+              <div class="notes-body">${nl2br(invoice.notes)}</div>
             </div>`
           : ""
       }
