@@ -179,6 +179,20 @@ export function renderInvoicePdfHtml({
   const gstPercent = Number(invoice.gstPercent || 0);
   const gstAmount = Number(invoice.gstAmount || 0);
   const hasGst = gstPercent > 0 || gstAmount > 0;
+  const amountPayableNow =
+    balanceAmount > 0 ? balanceAmount : Math.max(totalAmount - paidAmount, 0);
+  const hasBalance = amountPayableNow > 0;
+  const paymentHeadline = hasBalance ? "Amount Payable Now" : "Payment Status";
+  const paymentSubline = hasBalance
+    ? `${formatCurrency(amountPayableNow)} is payable now. ${formatCurrency(
+        paidAmount
+      )} already received against annual package of ${formatCurrency(totalAmount)}.`
+    : `Payment received in full against annual package of ${formatCurrency(totalAmount)}.`;
+  const serviceDescription = hasBalance
+    ? `Annual service package. ${formatCurrency(paidAmount)} already received. ${formatCurrency(
+        amountPayableNow
+      )} payable now.`
+    : invoice.notes || "Subscription / service billing as per agreed plan.";
 
   const period =
     invoice.billingPeriodFrom || invoice.billingPeriodTo
@@ -343,6 +357,113 @@ export function renderInvoicePdfHtml({
       font-weight: 800;
       font-size: 9.5px;
       letter-spacing: 0.4px;
+    }
+
+    .payment-hero {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 10px;
+      margin-top: 10px;
+      page-break-inside: avoid;
+    }
+
+    .pay-now-card {
+      border-radius: 16px;
+      background: linear-gradient(135deg, ${secondary}, ${primary});
+      color: #ffffff;
+      padding: 14px 16px;
+      overflow: hidden;
+      position: relative;
+      min-height: 106px;
+    }
+
+    .pay-now-card::after {
+      content: "";
+      position: absolute;
+      right: -45px;
+      top: -55px;
+      width: 160px;
+      height: 160px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.13);
+    }
+
+    .pay-label {
+      font-size: 10.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      opacity: 0.92;
+      margin-bottom: 5px;
+    }
+
+    .pay-amount {
+      font-size: 32px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-bottom: 7px;
+    }
+
+    .pay-subline {
+      font-size: 10.5px;
+      line-height: 1.28;
+      max-width: 420px;
+      opacity: 0.96;
+      font-weight: 600;
+    }
+
+    .payment-breakup-card {
+      border: 1px solid #dbe5ef;
+      border-radius: 16px;
+      background: #f8fafc;
+      padding: 10px 12px;
+      min-height: 106px;
+    }
+
+    .breakup-title {
+      font-size: 10px;
+      font-weight: 900;
+      color: ${primary};
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 7px;
+    }
+
+    .breakup-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px dashed #dbe5ef;
+      font-size: 10.4px;
+    }
+
+    .breakup-row:last-child {
+      border-bottom: none;
+    }
+
+    .breakup-label {
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .breakup-value {
+      color: #0f172a;
+      font-weight: 900;
+      text-align: right;
+    }
+
+    .breakup-row.highlight {
+      margin-top: 2px;
+      padding-top: 6px;
+      border-bottom: none;
+    }
+
+    .breakup-row.highlight .breakup-label,
+    .breakup-row.highlight .breakup-value {
+      color: ${primary};
+      font-size: 12px;
     }
 
     .top-info-grid {
@@ -580,15 +701,27 @@ export function renderInvoicePdfHtml({
       text-align: right;
     }
 
-    .grand {
-      background: ${primary};
+    .package-total {
+      background: #f8fafc;
     }
 
-    .grand .total-label,
-    .grand .total-value {
+    .package-total .total-label,
+    .package-total .total-value {
+      color: #334155;
+      font-weight: 800;
+    }
+
+    .payable-total {
+      background: linear-gradient(90deg, ${secondary}, ${primary});
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .payable-total .total-label,
+    .payable-total .total-value {
       color: #ffffff;
       font-weight: 900;
-      font-size: 12px;
+      font-size: 12.5px;
     }
 
     .notes-grid {
@@ -674,6 +807,30 @@ export function renderInvoicePdfHtml({
       </div>
     </div>
 
+    <div class="payment-hero">
+      <div class="pay-now-card">
+        <div class="pay-label">${esc(paymentHeadline)}</div>
+        <div class="pay-amount">${formatCurrency(amountPayableNow)}</div>
+        <div class="pay-subline">${esc(paymentSubline)}</div>
+      </div>
+
+      <div class="payment-breakup-card">
+        <div class="breakup-title">Payment Breakup</div>
+        <div class="breakup-row">
+          <span class="breakup-label">Annual Package Total</span>
+          <span class="breakup-value">${formatCurrency(totalAmount)}</span>
+        </div>
+        <div class="breakup-row">
+          <span class="breakup-label">Already Received</span>
+          <span class="breakup-value">${formatCurrency(paidAmount)}</span>
+        </div>
+        <div class="breakup-row highlight">
+          <span class="breakup-label">Payable Now</span>
+          <span class="breakup-value">${formatCurrency(amountPayableNow)}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="top-info-grid">
       <div class="section-card">
         <div class="section-head">Bill To</div>
@@ -696,13 +853,13 @@ export function renderInvoicePdfHtml({
           <tr>
             <th style="width: ${hasGst ? "44%" : "56%"};">Description</th>
             <th style="width: 20%;">Period</th>
-            <th class="text-right" style="width: 12%;">Amount</th>
+            <th class="text-right" style="width: 12%;">Package</th>
             ${
               hasGst
                 ? `<th class="text-right" style="width: 12%;">GST</th>`
                 : ""
             }
-            <th class="text-right" style="width: 12%;">Total</th>
+            <th class="text-right" style="width: 12%;">Annual Total</th>
           </tr>
         </thead>
         <tbody>
@@ -711,9 +868,7 @@ export function renderInvoicePdfHtml({
               <div class="service-title">${esc(
                 subscription.serviceName || "Service Charges"
               )}</div>
-              <div class="service-desc">${esc(
-                invoice.notes || "Subscription / service billing as per agreed plan."
-              )}</div>
+              <div class="service-desc">${esc(serviceDescription)}</div>
             </td>
             <td>${esc(period)}</td>
             <td class="text-right">${formatCurrency(invoice.subtotal)}</td>
@@ -784,25 +939,28 @@ export function renderInvoicePdfHtml({
                 </div>`
               : ""
           }
-          <div class="total-row grand">
-            <span class="total-label">Grand Total</span>
+          <div class="total-row package-total">
+            <span class="total-label">Annual Package Total</span>
             <span class="total-value">${formatCurrency(totalAmount)}</span>
           </div>
           ${
             paidAmount > 0
               ? `<div class="total-row">
-                  <span class="total-label">Paid Amount</span>
+                  <span class="total-label">Already Received</span>
                   <span class="total-value">${formatCurrency(paidAmount)}</span>
                 </div>`
               : ""
           }
           ${
-            balanceAmount > 0
-              ? `<div class="total-row">
-                  <span class="total-label">Balance Amount</span>
-                  <span class="total-value">${formatCurrency(balanceAmount)}</span>
+            hasBalance
+              ? `<div class="total-row payable-total">
+                  <span class="total-label">Amount Payable Now</span>
+                  <span class="total-value">${formatCurrency(amountPayableNow)}</span>
                 </div>`
-              : ""
+              : `<div class="total-row payable-total">
+                  <span class="total-label">Payment Status</span>
+                  <span class="total-value">Paid in Full</span>
+                </div>`
           }
         </div>
       </div>
@@ -819,24 +977,21 @@ export function renderInvoicePdfHtml({
       }
 
       ${
-        company.footerNote || invoice.notes
+        invoice.notes
           ? `<div class="notes-card">
               <div class="section-head">Notes</div>
-              <div class="notes-body">
-                ${
-                  company.footerNote
-                    ? nl2br(company.footerNote)
-                    : "Thank you for your business."
-                }
-              </div>
+              <div class="notes-body">${nl2br(invoice.notes)}</div>
+            </div>`
+          : company.footerNote
+          ? `<div class="notes-card">
+              <div class="section-head">Notes</div>
+              <div class="notes-body">${nl2br(company.footerNote)}</div>
             </div>`
           : ""
       }
     </div>
 
     <div class="footer">
-      ${esc(company.footerNote || "This is a system generated invoice.")}
-      <br/>
       ${esc(company.companyName || "Edubridge ERP")}
       ${company.website ? ` • ${esc(company.website)}` : ""}
     </div>
