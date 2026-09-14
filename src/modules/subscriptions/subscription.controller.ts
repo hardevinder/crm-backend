@@ -14,7 +14,7 @@ function toDate(value?: string | null) {
 type CreateSubscriptionBody = {
   clientId: number;
   serviceName: string;
-  billingCycle?: "monthly" | "quarterly" | "yearly" | "one_time";
+  billingCycle?: "monthly" | "quarterly" | "half_yearly" | "yearly" | "one_time";
   amount: number | string;
   gstPercent?: number | string;
   startDate?: string;

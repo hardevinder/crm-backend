@@ -19,6 +19,7 @@ function addBillingCycle(date: Date, cycle: string) {
 
   if (cycle === "monthly") d.setMonth(d.getMonth() + 1);
   else if (cycle === "quarterly") d.setMonth(d.getMonth() + 3);
+  else if (cycle === "half_yearly") d.setMonth(d.getMonth() + 6);
   else if (cycle === "yearly") d.setFullYear(d.getFullYear() + 1);
   else return null;
 

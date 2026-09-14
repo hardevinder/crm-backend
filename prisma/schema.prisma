@@ -43,6 +43,7 @@ enum BillingCycle {
   quarterly
   yearly
   one_time
+  half_yearly
 }
 
 enum SubscriptionStatus {
