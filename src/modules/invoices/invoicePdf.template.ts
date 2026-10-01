@@ -800,7 +800,7 @@ export function renderInvoicePdfHtml({
               : ""
           }
           <div class="total-row package-total">
-            <span class="total-label">Annual Package Total</span>
+            <span class="total-label">Package Total</span>
             <span class="total-value">${formatCurrency(totalAmount)}</span>
           </div>
           ${
