@@ -30,6 +30,7 @@ enum ClientType {
   software
   result_analyzer
   other
+  digital_marketing
 }
 
 enum ClientStatus {

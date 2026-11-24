@@ -16,6 +16,7 @@ type ClientType =
   | "college"
   | "transport"
   | "website"
+  | "digital_marketing"
   | "software"
   | "result_analyzer"
   | "other";
